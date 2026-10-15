@@ -23,5 +23,7 @@ typedef struct {
 
 esp_err_t shelly_client_start(void);
 shelly_state_t shelly_client_get(shelly_sample_t *sample);
+esp_err_t shelly_client_request_output(bool on);
+bool shelly_client_command_pending(void);
 const char *shelly_client_status_text(void);
 

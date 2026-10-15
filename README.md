@@ -15,7 +15,8 @@ Standardvärdet för huvudsäkringen är **25 A**.
 - Nästa händelse från familjens privata Google-kalender visas direkt på klockvyn. Tryck på kalenderfältet för en egen sida med de sex närmaste händelserna.
 - Kalendern uppdateras var 15:e minut och vanliga dagliga, veckovisa, månatliga och årliga upprepningar stöds.
 - Tibber GraphQL-abonnemang med `currentL1`, `currentL2` och `currentL3` i realtid.
-- Skrivskyddad lokal mätning från Shelly Plug S Gen3: reläläge och effekt på huvudvyn samt spänning och temperatur på systemstatussidan.
+- Lokal mätning från Shelly Plug S Gen3: **REDO**, **KÖR** eller **STRÖMLÖS** och aktuell effekt på huvudvyn samt ström, spänning och temperatur på en egen Shelly-sida.
+- Skyddad manuell relästyrning: tryck på mikroraden, håll styrknappen i två sekunder och bekräfta därefter ändringen i ett separat dialogfönster.
 - Simulerade fasvärden används automatiskt tills Tibber är konfigurerat eller om liveflödet är tillfälligt nere.
 - Tydliga belastningszoner: grönt till 10 A, orange till 17,5 A och rött över 17,5 A med 25 A huvudsäkring.
 - Automatisk fasvy i röd zon och återgång efter åtta sekunder.
@@ -25,7 +26,7 @@ Standardvärdet för huvudsäkringen är **25 A**.
 ## Planerade familjefunktioner
 
 - En enkel gemensam inköpslista med möjlighet att lägga till exempelvis ”mjölk” från mobil eller display.
-- Prova reläet med en liten testlast och aktivera därefter uttrycklig manuell styrning och eventuell säker lastfrånkoppling för mikron.
+- Säker automatisk lastfrånkoppling för mikron efter att installationen och mikrons verkliga förbrukning har verifierats på plats.
 
 Kalendern läses skrivskyddat via Googles hemliga iCal-adress. Adressen lagras endast på enheten, aldrig i Git-förrådet eller i loggarna.
 
@@ -42,7 +43,7 @@ En personlig token kan skapas på [Tibber Developer](https://developer.tibber.co
 
 ### Sekretess och säkerhet
 
-SSID, lösenord, Tibber-token, kalenderadress och Shelly-adress lagras i ESP32-enhetens NVS-minne och skrivs aldrig till projektfiler eller loggar. Installationssidan använder vanlig lokal HTTP och saknar egen inloggning; använd den därför bara på ett betrott hemnätverk och låt inte installationsnätverket vara åtkomligt längre än nödvändigt. Den nuvarande Shelly-integrationen hämtar enbart mätvärden och kan inte ändra reläläget.
+SSID, lösenord, Tibber-token, kalenderadress och Shelly-adress lagras i ESP32-enhetens NVS-minne och skrivs aldrig till projektfiler eller loggar. Installationssidan använder vanlig lokal HTTP och saknar egen inloggning; använd den därför bara på ett betrott hemnätverk och låt inte installationsnätverket vara åtkomligt längre än nödvändigt. Reläet kan bara ändras från Shelly-sidan efter både ett två sekunder långt tryck och en separat bekräftelse.
 
 ## Bygga
 
@@ -80,7 +81,7 @@ De tre färdiga bilderna ligger även i `firmware/` och har följande offset:
 - `main/network_setup.c` – Wi-Fi, NVS och den lokala installationssidan.
 - `main/calendar_source.c` – hämtar, tolkar och sorterar kommande kalenderhändelser från privat iCal.
 - `main/weather_source.c` – hämtar aktuellt väder för Älvsjö och behåller senaste värdet vid tillfälliga anslutningsfel.
-- `main/shelly_client.c` – hämtar reläläge och elmätvärden skrivskyddat från Shellyn på det lokala nätverket.
+- `main/shelly_client.c` – hämtar reläläge och elmätvärden och verkställer bekräftade reläkommandon i bakgrunden på det lokala nätverket.
 - `main/tibber_client.c` – Tibbers GraphQL- och WebSocket-klient.
 - `main/phase_source.c` – väljer livevärden eller simulering.
 - `main/app_time.c` – RTC, NTP och svensk tidszon.

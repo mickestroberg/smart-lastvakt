@@ -37,10 +37,12 @@ typedef struct {
     lv_obj_t *phase_view;
     lv_obj_t *calendar_view;
     lv_obj_t *status_view;
+    lv_obj_t *shelly_view;
     lv_obj_t *clock_large;
     lv_obj_t *clock_small;
     lv_obj_t *calendar_clock;
     lv_obj_t *status_clock;
+    lv_obj_t *shelly_clock;
     lv_obj_t *date;
     lv_obj_t *weather_temperature;
     lv_obj_t *weather_condition;
@@ -77,8 +79,22 @@ typedef struct {
     lv_obj_t *status_shelly;
     lv_obj_t *status_setup_url;
     lv_obj_t *status_qr;
+    lv_obj_t *shelly_connection_status;
+    lv_obj_t *shelly_state_large;
+    lv_obj_t *shelly_power;
+    lv_obj_t *shelly_details;
+    lv_obj_t *shelly_control_button;
+    lv_obj_t *shelly_control_label;
+    lv_obj_t *shelly_control_hint;
+    lv_obj_t *shelly_confirm_overlay;
+    lv_obj_t *shelly_confirm_question;
+    lv_obj_t *shelly_confirm_button;
+    lv_obj_t *shelly_confirm_button_label;
     char qr_url[40];
     bool phase_visible;
+    bool shelly_confirm_target;
+    bool shelly_hold_triggered;
+    int64_t shelly_hold_started_ms;
     int64_t last_over_threshold_ms;
     int64_t manual_phase_until_ms;
 } ui_state_t;
@@ -381,11 +397,13 @@ static void show_phase_view(bool show)
         lv_obj_add_flag(s_ui.clock_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_ui.calendar_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_ui.status_view, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_ui.shelly_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(s_ui.phase_view, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(s_ui.phase_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_ui.calendar_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_ui.status_view, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_ui.shelly_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(s_ui.clock_view, LV_OBJ_FLAG_HIDDEN);
     }
 }
@@ -397,6 +415,7 @@ static void show_calendar_view(void)
     lv_obj_add_flag(s_ui.clock_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_ui.phase_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_ui.status_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.shelly_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(s_ui.calendar_view, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -407,7 +426,19 @@ static void show_status_view(void)
     lv_obj_add_flag(s_ui.clock_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_ui.phase_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_ui.calendar_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.shelly_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(s_ui.status_view, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void show_shelly_view(void)
+{
+    s_ui.phase_visible = false;
+    s_ui.manual_phase_until_ms = 0;
+    lv_obj_add_flag(s_ui.clock_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.phase_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.calendar_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.status_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_ui.shelly_view, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void view_button_event(lv_event_t *event)
@@ -445,6 +476,78 @@ static void status_back_event(lv_event_t *event)
 {
     (void)event;
     show_phase_view(false);
+}
+
+static void shelly_panel_event(lv_event_t *event)
+{
+    (void)event;
+    show_shelly_view();
+}
+
+static void shelly_back_event(lv_event_t *event)
+{
+    (void)event;
+    lv_obj_add_flag(s_ui.shelly_confirm_overlay, LV_OBJ_FLAG_HIDDEN);
+    show_phase_view(false);
+}
+
+static void shelly_cancel_event(lv_event_t *event)
+{
+    (void)event;
+    lv_obj_add_flag(s_ui.shelly_confirm_overlay, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void shelly_confirm_event(lv_event_t *event)
+{
+    (void)event;
+    const esp_err_t err = shelly_client_request_output(s_ui.shelly_confirm_target);
+    lv_obj_add_flag(s_ui.shelly_confirm_overlay, LV_OBJ_FLAG_HIDDEN);
+    if (err != ESP_OK) {
+        lv_label_set_text(s_ui.shelly_control_hint, "Kunde inte skicka kommandot • försök igen");
+        lv_obj_set_style_text_color(s_ui.shelly_control_hint, lv_color_hex(COLOR_WARNING), LV_PART_MAIN);
+    }
+}
+
+static void shelly_hold_event(lv_event_t *event)
+{
+    const lv_event_code_t code = lv_event_get_code(event);
+    const int64_t now_ms = esp_timer_get_time() / 1000;
+    if (code == LV_EVENT_PRESSED) {
+        s_ui.shelly_hold_started_ms = now_ms;
+        s_ui.shelly_hold_triggered = false;
+        return;
+    }
+    if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+        s_ui.shelly_hold_started_ms = 0;
+        return;
+    }
+    if (code != LV_EVENT_PRESSING || s_ui.shelly_hold_triggered ||
+        s_ui.shelly_hold_started_ms == 0 || now_ms - s_ui.shelly_hold_started_ms < 2000) {
+        return;
+    }
+
+    shelly_sample_t sample = {0};
+    if (shelly_client_get(&sample) != SHELLY_READY || !sample.available ||
+        shelly_client_command_pending()) {
+        return;
+    }
+
+    s_ui.shelly_hold_triggered = true;
+    s_ui.shelly_confirm_target = !sample.output_on;
+    lv_label_set_text(
+        s_ui.shelly_confirm_question,
+        s_ui.shelly_confirm_target
+            ? "Slå på strömmen till Shelly-uttaget?"
+            : "Bryt strömmen till Shelly-uttaget?");
+    lv_label_set_text(
+        s_ui.shelly_confirm_button_label,
+        s_ui.shelly_confirm_target ? "Ja, slå på" : "Ja, stäng av");
+    lv_obj_set_style_bg_color(
+        s_ui.shelly_confirm_button,
+        lv_color_hex(s_ui.shelly_confirm_target ? 0x14614B : 0x7A2630),
+        LV_PART_MAIN);
+    lv_obj_clear_flag(s_ui.shelly_confirm_overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(s_ui.shelly_confirm_overlay);
 }
 
 static void create_clock_view(lv_obj_t *root)
@@ -538,6 +641,9 @@ static void create_clock_view(lv_obj_t *root)
     s_ui.microwave_status = make_label(s_ui.load_panel, &lv_font_lastvakt_12, COLOR_MUTED);
     lv_label_set_text(s_ui.microwave_status, "MIKRO • Shelly är inte konfigurerad");
     lv_obj_align(s_ui.microwave_status, LV_ALIGN_TOP_LEFT, 24, 88);
+    lv_obj_add_flag(s_ui.microwave_status, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_ui.microwave_status, 14);
+    lv_obj_add_event_cb(s_ui.microwave_status, shelly_panel_event, LV_EVENT_CLICKED, NULL);
 
     s_ui.load_value = make_label(s_ui.load_panel, &lv_font_lastvakt_24, COLOR_MINT);
     lv_label_set_text(s_ui.load_value, "L1  0,0 A");
@@ -777,6 +883,137 @@ static void create_status_view(lv_obj_t *root)
     lv_obj_set_pos(qr_hint, 545, 372);
 }
 
+static void create_shelly_view(lv_obj_t *root)
+{
+    s_ui.shelly_view = lv_obj_create(root);
+    lv_obj_set_size(s_ui.shelly_view, 800, 480);
+    lv_obj_center(s_ui.shelly_view);
+    style_panel(s_ui.shelly_view, COLOR_BG, 0);
+
+    lv_obj_t *title = make_label(s_ui.shelly_view, &lv_font_lastvakt_24, COLOR_TEXT);
+    lv_label_set_text(title, "Mikro och Shelly");
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 36, 18);
+
+    s_ui.shelly_connection_status = make_label(s_ui.shelly_view, &lv_font_lastvakt_12, COLOR_MUTED);
+    lv_label_set_text(s_ui.shelly_connection_status, "Lokal mätning och skyddad relästyrning");
+    lv_obj_align(s_ui.shelly_connection_status, LV_ALIGN_TOP_LEFT, 36, 52);
+
+    s_ui.shelly_clock = make_label(s_ui.shelly_view, &lv_font_lastvakt_24, COLOR_TEXT);
+    lv_label_set_text(s_ui.shelly_clock, "--:--");
+    lv_obj_align(s_ui.shelly_clock, LV_ALIGN_TOP_RIGHT, -178, 24);
+
+    lv_obj_t *back = make_button(s_ui.shelly_view, "Tillbaka", shelly_back_event);
+    lv_obj_align(back, LV_ALIGN_TOP_RIGHT, -36, 14);
+
+    lv_obj_t *state_panel = lv_obj_create(s_ui.shelly_view);
+    lv_obj_set_size(state_panel, 458, 270);
+    lv_obj_set_pos(state_panel, 36, 92);
+    style_panel(state_panel, COLOR_PANEL, 22);
+
+    lv_obj_t *state_caption = make_label(state_panel, &lv_font_lastvakt_12, COLOR_CYAN);
+    lv_label_set_text(state_caption, "UTTAGETS LÄGE");
+    lv_obj_set_pos(state_caption, 24, 20);
+
+    s_ui.shelly_state_large = make_label(state_panel, &lv_font_montserrat_48, COLOR_MINT);
+    lv_label_set_text(s_ui.shelly_state_large, "ANSLUTER");
+    lv_obj_set_pos(s_ui.shelly_state_large, 24, 55);
+
+    s_ui.shelly_power = make_label(state_panel, &lv_font_lastvakt_24, COLOR_TEXT);
+    lv_label_set_text(s_ui.shelly_power, "-- W");
+    lv_obj_set_pos(s_ui.shelly_power, 24, 135);
+
+    s_ui.shelly_details = make_label(state_panel, &lv_font_lastvakt_16, COLOR_MUTED);
+    lv_obj_set_width(s_ui.shelly_details, 410);
+    lv_label_set_text(s_ui.shelly_details, "Ström -- A  •  Spänning -- V\nShelly-temperatur -- C");
+    lv_obj_set_style_text_line_space(s_ui.shelly_details, 10, LV_PART_MAIN);
+    lv_obj_set_pos(s_ui.shelly_details, 24, 184);
+
+    lv_obj_t *control_panel = lv_obj_create(s_ui.shelly_view);
+    lv_obj_set_size(control_panel, 238, 270);
+    lv_obj_set_pos(control_panel, 526, 92);
+    style_panel(control_panel, COLOR_PANEL, 22);
+
+    lv_obj_t *control_caption = make_label(control_panel, &lv_font_lastvakt_12, COLOR_CYAN);
+    lv_label_set_text(control_caption, "RELÄSTYRNING");
+    lv_obj_align(control_caption, LV_ALIGN_TOP_MID, 0, 20);
+
+    s_ui.shelly_control_button = lv_btn_create(control_panel);
+    lv_obj_set_size(s_ui.shelly_control_button, 190, 112);
+    lv_obj_align(s_ui.shelly_control_button, LV_ALIGN_TOP_MID, 0, 52);
+    lv_obj_set_style_bg_color(s_ui.shelly_control_button, lv_color_hex(COLOR_PANEL_LIGHT), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_ui.shelly_control_button, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_ui.shelly_control_button, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_ui.shelly_control_button, lv_color_hex(COLOR_CYAN), LV_PART_MAIN);
+    lv_obj_set_style_radius(s_ui.shelly_control_button, 20, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(s_ui.shelly_control_button, 0, LV_PART_MAIN);
+    lv_obj_add_event_cb(s_ui.shelly_control_button, shelly_hold_event, LV_EVENT_ALL, NULL);
+
+    s_ui.shelly_control_label = make_label(s_ui.shelly_control_button, &lv_font_lastvakt_16, COLOR_TEXT);
+    lv_obj_set_width(s_ui.shelly_control_label, 170);
+    lv_obj_set_style_text_align(s_ui.shelly_control_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_label_set_text(s_ui.shelly_control_label, "HÅLL I 2 SEK\nSTÄNG AV");
+    lv_obj_center(s_ui.shelly_control_label);
+
+    s_ui.shelly_control_hint = make_label(control_panel, &lv_font_lastvakt_12, COLOR_MUTED);
+    lv_obj_set_width(s_ui.shelly_control_hint, 198);
+    lv_obj_set_style_text_align(s_ui.shelly_control_hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_label_set_text(s_ui.shelly_control_hint, "Efter långtryck får du bekräfta");
+    lv_obj_align(s_ui.shelly_control_hint, LV_ALIGN_BOTTOM_MID, 0, -30);
+
+    lv_obj_t *safety_panel = lv_obj_create(s_ui.shelly_view);
+    lv_obj_set_size(safety_panel, 728, 76);
+    lv_obj_set_pos(safety_panel, 36, 380);
+    style_panel(safety_panel, COLOR_PANEL_LIGHT, 18);
+
+    lv_obj_t *safety_title = make_label(safety_panel, &lv_font_lastvakt_12, COLOR_WARNING);
+    lv_label_set_text(safety_title, "SÄKER STYRNING");
+    lv_obj_set_pos(safety_title, 20, 13);
+
+    lv_obj_t *safety_text = make_label(safety_panel, &lv_font_lastvakt_16, COLOR_TEXT);
+    lv_obj_set_width(safety_text, 688);
+    lv_label_set_long_mode(safety_text, LV_LABEL_LONG_DOT);
+    lv_label_set_text(safety_text, "Kontrollera alltid apparaten innan strömmen slås på.");
+    lv_obj_set_pos(safety_text, 20, 39);
+
+    s_ui.shelly_confirm_overlay = lv_obj_create(s_ui.shelly_view);
+    lv_obj_set_size(s_ui.shelly_confirm_overlay, 800, 480);
+    lv_obj_set_pos(s_ui.shelly_confirm_overlay, 0, 0);
+    lv_obj_set_style_bg_color(s_ui.shelly_confirm_overlay, lv_color_hex(0x000000), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_ui.shelly_confirm_overlay, LV_OPA_70, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_ui.shelly_confirm_overlay, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_ui.shelly_confirm_overlay, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(s_ui.shelly_confirm_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_ui.shelly_confirm_overlay, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *dialog = lv_obj_create(s_ui.shelly_confirm_overlay);
+    lv_obj_set_size(dialog, 500, 248);
+    lv_obj_center(dialog);
+    style_panel(dialog, COLOR_PANEL, 24);
+    lv_obj_set_style_border_width(dialog, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(dialog, lv_color_hex(COLOR_CYAN), LV_PART_MAIN);
+
+    lv_obj_t *dialog_title = make_label(dialog, &lv_font_lastvakt_20, COLOR_TEXT);
+    lv_label_set_text(dialog_title, "Bekräfta reläändring");
+    lv_obj_align(dialog_title, LV_ALIGN_TOP_MID, 0, 26);
+
+    s_ui.shelly_confirm_question = make_label(dialog, &lv_font_lastvakt_16, COLOR_MUTED);
+    lv_obj_set_width(s_ui.shelly_confirm_question, 440);
+    lv_obj_set_style_text_align(s_ui.shelly_confirm_question, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_label_set_text(s_ui.shelly_confirm_question, "Ändra Shelly-uttagets läge?");
+    lv_obj_align(s_ui.shelly_confirm_question, LV_ALIGN_TOP_MID, 0, 80);
+
+    lv_obj_t *cancel = make_button(dialog, "Avbryt", shelly_cancel_event);
+    lv_obj_set_size(cancel, 170, 50);
+    lv_obj_align(cancel, LV_ALIGN_BOTTOM_LEFT, 36, -30);
+
+    s_ui.shelly_confirm_button = make_button(dialog, "Bekräfta", shelly_confirm_event);
+    lv_obj_set_size(s_ui.shelly_confirm_button, 210, 50);
+    lv_obj_align(s_ui.shelly_confirm_button, LV_ALIGN_BOTTOM_RIGHT, -36, -30);
+    s_ui.shelly_confirm_button_label = lv_obj_get_child(s_ui.shelly_confirm_button, 0);
+
+    lv_obj_add_flag(s_ui.shelly_confirm_overlay, LV_OBJ_FLAG_HIDDEN);
+}
+
 static int highest_phase(const phase_sample_t *sample)
 {
     int highest = 0;
@@ -786,6 +1023,20 @@ static int highest_phase(const phase_sample_t *sample)
         }
     }
     return highest;
+}
+
+static const char *shelly_mode_label(const shelly_sample_t *sample)
+{
+    if (!sample->output_on) return "STRÖMLÖS";
+    if (sample->power_w >= 20.0f) return "KÖR";
+    return "REDO";
+}
+
+static uint32_t shelly_mode_color(const shelly_sample_t *sample)
+{
+    if (!sample->output_on) return COLOR_MUTED;
+    if (sample->power_w >= 20.0f) return COLOR_CYAN;
+    return COLOR_MINT;
 }
 
 static void ui_timer(lv_timer_t *timer)
@@ -798,6 +1049,7 @@ static void ui_timer(lv_timer_t *timer)
     lv_label_set_text(s_ui.clock_small, clock_text);
     lv_label_set_text(s_ui.calendar_clock, clock_text);
     lv_label_set_text(s_ui.status_clock, clock_text);
+    lv_label_set_text(s_ui.shelly_clock, clock_text);
     lv_label_set_text(s_ui.date, date_text);
 
     weather_sample_t weather = {0};
@@ -846,13 +1098,14 @@ static void ui_timer(lv_timer_t *timer)
 
     shelly_sample_t shelly = {0};
     const shelly_state_t shelly_state = shelly_client_get(&shelly);
+    const bool shelly_command_pending = shelly_client_command_pending();
     if (shelly.available) {
         char microwave_text[96];
         snprintf(
             microwave_text,
             sizeof(microwave_text),
             "MIKRO • %s • %.0f W",
-            shelly.output_on ? "PÅ" : "AV",
+            shelly_command_pending ? "VÄXLAR" : shelly_mode_label(&shelly),
             shelly.power_w);
         lv_label_set_text(s_ui.microwave_status, microwave_text);
 
@@ -867,10 +1120,62 @@ static void ui_timer(lv_timer_t *timer)
             shelly.temperature_c,
             shelly_state == SHELLY_STALE ? " • senaste värdet" : "");
         lv_label_set_text(s_ui.status_shelly, shelly_status);
-        const uint32_t shelly_color =
-            shelly_state == SHELLY_READY ? (shelly.output_on ? COLOR_CYAN : COLOR_MUTED) : COLOR_WARNING;
+        const uint32_t shelly_color = shelly_state == SHELLY_READY
+                                          ? (shelly_command_pending ? COLOR_WARNING : shelly_mode_color(&shelly))
+                                          : COLOR_WARNING;
         lv_obj_set_style_text_color(s_ui.microwave_status, lv_color_hex(shelly_color), LV_PART_MAIN);
         lv_obj_set_style_text_color(s_ui.status_shelly, lv_color_hex(shelly_color), LV_PART_MAIN);
+
+        lv_label_set_text(
+            s_ui.shelly_connection_status,
+            shelly_state == SHELLY_READY ? "Shelly ansluten • live" : "Shelly ansluten • senaste värdet");
+        lv_obj_set_style_text_color(
+            s_ui.shelly_connection_status,
+            lv_color_hex(shelly_state == SHELLY_READY ? COLOR_MINT : COLOR_WARNING),
+            LV_PART_MAIN);
+        lv_label_set_text(
+            s_ui.shelly_state_large,
+            shelly_command_pending ? "VÄXLAR…" : shelly_mode_label(&shelly));
+        lv_obj_set_style_text_color(s_ui.shelly_state_large, lv_color_hex(shelly_color), LV_PART_MAIN);
+
+        char power_text[32];
+        snprintf(power_text, sizeof(power_text), "%.0f W", shelly.power_w);
+        lv_label_set_text(s_ui.shelly_power, power_text);
+
+        char details_text[128];
+        snprintf(
+            details_text,
+            sizeof(details_text),
+            "Ström %.2f A  •  Spänning %.0f V\nShelly-temperatur %.1f C",
+            shelly.current_a,
+            shelly.voltage_v,
+            shelly.temperature_c);
+        for (char *p = details_text; *p != '\0'; ++p) {
+            if (*p == '.') *p = ',';
+        }
+        lv_label_set_text(s_ui.shelly_details, details_text);
+
+        if (shelly_state == SHELLY_READY && !shelly_command_pending) {
+            lv_obj_clear_state(s_ui.shelly_control_button, LV_STATE_DISABLED);
+            lv_label_set_text(
+                s_ui.shelly_control_label,
+                shelly.output_on ? "HÅLL I 2 SEK\nSTÄNG AV" : "HÅLL I 2 SEK\nSLÅ PÅ");
+            lv_label_set_text(s_ui.shelly_control_hint, "Efter långtryck får du bekräfta");
+            lv_obj_set_style_text_color(s_ui.shelly_control_hint, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
+            lv_obj_set_style_border_color(
+                s_ui.shelly_control_button,
+                lv_color_hex(shelly.output_on ? COLOR_DANGER : COLOR_MINT),
+                LV_PART_MAIN);
+        } else {
+            lv_obj_add_state(s_ui.shelly_control_button, LV_STATE_DISABLED);
+            lv_label_set_text(
+                s_ui.shelly_control_label,
+                shelly_command_pending ? "VÄXLAR…" : "INTE TILLGÄNGLIG");
+            lv_label_set_text(
+                s_ui.shelly_control_hint,
+                shelly_command_pending ? "Väntar på bekräftelse från Shellyn" : "Anslutningen måste vara live");
+            lv_obj_set_style_text_color(s_ui.shelly_control_hint, lv_color_hex(COLOR_WARNING), LV_PART_MAIN);
+        }
     } else {
         const char *microwave_text = "MIKRO • Shelly är inte konfigurerad";
         if (shelly_state == SHELLY_CONNECTING) microwave_text = "MIKRO • ansluter till Shelly…";
@@ -885,6 +1190,23 @@ static void ui_timer(lv_timer_t *timer)
             s_ui.status_shelly,
             lv_color_hex(shelly_state == SHELLY_STALE ? COLOR_WARNING : COLOR_MUTED),
             LV_PART_MAIN);
+
+        const char *shelly_page_status = "Shelly är inte konfigurerad";
+        if (shelly_state == SHELLY_CONNECTING) shelly_page_status = "Ansluter till Shelly…";
+        else if (shelly_state == SHELLY_STALE) shelly_page_status = "Shelly kan inte nås";
+        lv_label_set_text(s_ui.shelly_connection_status, shelly_page_status);
+        lv_obj_set_style_text_color(
+            s_ui.shelly_connection_status,
+            lv_color_hex(shelly_state == SHELLY_STALE ? COLOR_WARNING : COLOR_MUTED),
+            LV_PART_MAIN);
+        lv_label_set_text(s_ui.shelly_state_large, shelly_state == SHELLY_CONNECTING ? "ANSLUTER" : "OFFLINE");
+        lv_obj_set_style_text_color(s_ui.shelly_state_large, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
+        lv_label_set_text(s_ui.shelly_power, "-- W");
+        lv_label_set_text(s_ui.shelly_details, "Ström -- A  •  Spänning -- V\nShelly-temperatur -- C");
+        lv_obj_add_state(s_ui.shelly_control_button, LV_STATE_DISABLED);
+        lv_label_set_text(s_ui.shelly_control_label, "INTE TILLGÄNGLIG");
+        lv_label_set_text(s_ui.shelly_control_hint, "Anslutningen måste vara live");
+        lv_obj_set_style_text_color(s_ui.shelly_control_hint, lv_color_hex(COLOR_WARNING), LV_PART_MAIN);
     }
 
     lv_label_set_text(s_ui.status_network, network_setup_status_text());
@@ -1051,6 +1373,7 @@ void ui_create(void)
     create_phase_view(root);
     create_calendar_view(root);
     create_status_view(root);
+    create_shelly_view(root);
     show_phase_view(false);
 
     lv_timer_t *timer = lv_timer_create(ui_timer, 250, NULL);

@@ -26,7 +26,7 @@
   <rect class="panel" x="36" y="328" width="728" height="122" rx="22"/>
   <text class="muted small" x="60" y="359">HÖGSTA FAS JUST NU</text>
   <text class="mint phase" x="60" y="394">Gott om marginal</text>
-  <text class="muted small" x="60" y="429">MIKRO • AV • 0 W</text>
+  <text class="mint small" x="60" y="429">MIKRO • REDO • 0 W</text>
   <text class="mint medium" x="470" y="394">L2&#160;&#160;9,8 A</text>
   <rect class="light" x="616" y="366" width="126" height="46" rx="23"/>
   <text class="white label" x="679" y="395" text-anchor="middle">Visa faser</text>
