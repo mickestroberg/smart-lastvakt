@@ -1,0 +1,16 @@
+# ESP-IDF build products
+/build/
+/managed_components/
+/sdkconfig
+/sdkconfig.old
+
+# Local editor and OS files
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Never commit device dumps or credentials
+*factory-backup*.bin
+*.nvs
+secrets.*
