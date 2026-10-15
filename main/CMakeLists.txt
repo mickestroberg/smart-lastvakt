@@ -8,6 +8,7 @@ idf_component_register(
         "phase_source.c"
         "tibber_client.c"
         "ui.c"
+        "weather_source.c"
         "fonts/lv_font_lastvakt_12.c"
         "fonts/lv_font_lastvakt_16.c"
         "fonts/lv_font_lastvakt_20.c"

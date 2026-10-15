@@ -13,6 +13,7 @@
 #include "lastvakt_fonts.h"
 #include "network_setup.h"
 #include "phase_source.h"
+#include "weather_source.h"
 
 #define COLOR_BG 0x07111F
 #define COLOR_PANEL 0x0D1B2B
@@ -40,6 +41,15 @@ typedef struct {
     lv_obj_t *calendar_clock;
     lv_obj_t *status_clock;
     lv_obj_t *date;
+    lv_obj_t *weather_temperature;
+    lv_obj_t *weather_condition;
+    lv_obj_t *weather_sun;
+    lv_obj_t *weather_moon;
+    lv_obj_t *weather_cloud;
+    lv_obj_t *weather_rain;
+    lv_obj_t *weather_snow;
+    lv_obj_t *weather_fog;
+    lv_obj_t *weather_lightning;
     lv_obj_t *calendar_event;
     lv_obj_t *source_badge;
     lv_obj_t *source_badge_label;
@@ -61,6 +71,7 @@ typedef struct {
     lv_obj_t *status_time;
     lv_obj_t *status_tibber;
     lv_obj_t *status_calendar;
+    lv_obj_t *status_weather;
     lv_obj_t *status_setup_url;
     lv_obj_t *status_qr;
     char qr_url[40];
@@ -70,6 +81,33 @@ typedef struct {
 } ui_state_t;
 
 static ui_state_t s_ui;
+
+static lv_point_t s_sun_rays[][2] = {
+    {{55, 5}, {55, 14}},
+    {{55, 60}, {55, 69}},
+    {{20, 37}, {29, 37}},
+    {{81, 37}, {90, 37}},
+    {{30, 12}, {36, 19}},
+    {{74, 55}, {80, 62}},
+    {{30, 62}, {36, 55}},
+    {{74, 19}, {80, 12}},
+};
+
+static lv_point_t s_rain_drops[][2] = {
+    {{35, 66}, {29, 78}},
+    {{56, 66}, {50, 78}},
+    {{77, 66}, {71, 78}},
+};
+
+static lv_point_t s_fog_lines[][2] = {
+    {{23, 58}, {87, 58}},
+    {{31, 69}, {79, 69}},
+    {{23, 80}, {87, 80}},
+};
+
+static lv_point_t s_lightning_points[] = {
+    {60, 62}, {50, 75}, {60, 75}, {52, 88},
+};
 
 static load_zone_t load_zone_for_current(float current_a, float main_fuse_a)
 {
@@ -165,6 +203,144 @@ static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font, uint32_t co
     lv_obj_set_style_text_font(label, font, LV_PART_MAIN);
     lv_obj_set_style_text_color(label, lv_color_hex(color), LV_PART_MAIN);
     return label;
+}
+
+static lv_obj_t *make_icon_layer(lv_obj_t *parent)
+{
+    lv_obj_t *layer = lv_obj_create(parent);
+    lv_obj_remove_style_all(layer);
+    lv_obj_set_size(layer, 110, 92);
+    lv_obj_set_pos(layer, 0, 0);
+    lv_obj_clear_flag(layer, LV_OBJ_FLAG_SCROLLABLE);
+    return layer;
+}
+
+static lv_obj_t *make_icon_disc(lv_obj_t *parent, int x, int y, int size, uint32_t color)
+{
+    lv_obj_t *disc = lv_obj_create(parent);
+    lv_obj_remove_style_all(disc);
+    lv_obj_set_size(disc, size, size);
+    lv_obj_set_pos(disc, x, y);
+    lv_obj_set_style_bg_color(disc, lv_color_hex(color), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(disc, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(disc, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    return disc;
+}
+
+static lv_obj_t *make_icon_line(lv_obj_t *parent, lv_point_t *points, uint32_t color, int width)
+{
+    lv_obj_t *line = lv_line_create(parent);
+    lv_line_set_points(line, points, 2);
+    lv_obj_set_style_line_color(line, lv_color_hex(color), LV_PART_MAIN);
+    lv_obj_set_style_line_width(line, width, LV_PART_MAIN);
+    lv_obj_set_style_line_rounded(line, true, LV_PART_MAIN);
+    return line;
+}
+
+static const char *weather_description(int code)
+{
+    if (code == 0) return "Klart";
+    if (code == 1) return "Mestadels klart";
+    if (code == 2) return "Växlande molnighet";
+    if (code == 3) return "Mulet";
+    if (code == 45 || code == 48) return "Dimma";
+    if (code >= 51 && code <= 57) return "Duggregn";
+    if (code >= 61 && code <= 67) return "Regn";
+    if (code >= 71 && code <= 77) return "Snö";
+    if (code >= 80 && code <= 82) return "Regnskurar";
+    if (code >= 85 && code <= 86) return "Snöbyar";
+    if (code >= 95) return "Åska";
+    return "Väder";
+}
+
+static void update_weather_icon(const weather_sample_t *weather)
+{
+    const int code = weather->weather_code;
+    const bool fog = code == 45 || code == 48;
+    const bool rain = (code >= 51 && code <= 67) || (code >= 80 && code <= 82);
+    const bool snow = (code >= 71 && code <= 77) || (code >= 85 && code <= 86);
+    const bool thunder = code >= 95;
+    const bool cloudy = code == 2 || code == 3 || fog || rain || snow || thunder;
+    const bool celestial = code <= 2;
+
+    if (celestial && weather->is_day) lv_obj_clear_flag(s_ui.weather_sun, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(s_ui.weather_sun, LV_OBJ_FLAG_HIDDEN);
+    if (celestial && !weather->is_day) lv_obj_clear_flag(s_ui.weather_moon, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(s_ui.weather_moon, LV_OBJ_FLAG_HIDDEN);
+    if (cloudy && !fog) lv_obj_clear_flag(s_ui.weather_cloud, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(s_ui.weather_cloud, LV_OBJ_FLAG_HIDDEN);
+    if (rain || thunder) lv_obj_clear_flag(s_ui.weather_rain, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(s_ui.weather_rain, LV_OBJ_FLAG_HIDDEN);
+    if (snow) lv_obj_clear_flag(s_ui.weather_snow, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(s_ui.weather_snow, LV_OBJ_FLAG_HIDDEN);
+    if (fog) lv_obj_clear_flag(s_ui.weather_fog, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(s_ui.weather_fog, LV_OBJ_FLAG_HIDDEN);
+    if (thunder) lv_obj_clear_flag(s_ui.weather_lightning, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(s_ui.weather_lightning, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void create_weather_icon(lv_obj_t *parent)
+{
+    lv_obj_t *icon = lv_obj_create(parent);
+    lv_obj_remove_style_all(icon);
+    lv_obj_set_size(icon, 110, 92);
+    lv_obj_set_pos(icon, 640, 72);
+    lv_obj_clear_flag(icon, LV_OBJ_FLAG_SCROLLABLE);
+
+    s_ui.weather_sun = make_icon_layer(icon);
+    make_icon_disc(s_ui.weather_sun, 37, 19, 36, 0xFFD166);
+    for (size_t i = 0; i < sizeof(s_sun_rays) / sizeof(s_sun_rays[0]); ++i) {
+        make_icon_line(s_ui.weather_sun, s_sun_rays[i], 0xFFD166, 4);
+    }
+
+    s_ui.weather_moon = make_icon_layer(icon);
+    make_icon_disc(s_ui.weather_moon, 35, 14, 46, 0xFFE6A7);
+    make_icon_disc(s_ui.weather_moon, 51, 7, 43, COLOR_BG);
+
+    s_ui.weather_cloud = make_icon_layer(icon);
+    make_icon_disc(s_ui.weather_cloud, 18, 40, 34, 0xD8E1E8);
+    make_icon_disc(s_ui.weather_cloud, 38, 27, 46, 0xD8E1E8);
+    make_icon_disc(s_ui.weather_cloud, 69, 41, 31, 0xD8E1E8);
+    lv_obj_t *cloud_base = lv_obj_create(s_ui.weather_cloud);
+    lv_obj_remove_style_all(cloud_base);
+    lv_obj_set_size(cloud_base, 72, 29);
+    lv_obj_set_pos(cloud_base, 23, 48);
+    lv_obj_set_style_bg_color(cloud_base, lv_color_hex(0xD8E1E8), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(cloud_base, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(cloud_base, 14, LV_PART_MAIN);
+
+    s_ui.weather_rain = make_icon_layer(icon);
+    for (size_t i = 0; i < sizeof(s_rain_drops) / sizeof(s_rain_drops[0]); ++i) {
+        make_icon_line(s_ui.weather_rain, s_rain_drops[i], COLOR_CYAN, 4);
+    }
+
+    s_ui.weather_snow = make_icon_layer(icon);
+    make_icon_disc(s_ui.weather_snow, 30, 69, 7, COLOR_TEXT);
+    make_icon_disc(s_ui.weather_snow, 52, 75, 7, COLOR_TEXT);
+    make_icon_disc(s_ui.weather_snow, 75, 68, 7, COLOR_TEXT);
+
+    s_ui.weather_fog = make_icon_layer(icon);
+    for (size_t i = 0; i < sizeof(s_fog_lines) / sizeof(s_fog_lines[0]); ++i) {
+        make_icon_line(s_ui.weather_fog, s_fog_lines[i], COLOR_MUTED, 5);
+    }
+
+    s_ui.weather_lightning = make_icon_layer(icon);
+    lv_obj_t *lightning = lv_line_create(s_ui.weather_lightning);
+    lv_line_set_points(
+        lightning,
+        s_lightning_points,
+        sizeof(s_lightning_points) / sizeof(s_lightning_points[0]));
+    lv_obj_set_style_line_color(lightning, lv_color_hex(0xFFD166), LV_PART_MAIN);
+    lv_obj_set_style_line_width(lightning, 5, LV_PART_MAIN);
+    lv_obj_set_style_line_rounded(lightning, true, LV_PART_MAIN);
+
+    lv_obj_add_flag(s_ui.weather_sun, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.weather_moon, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.weather_cloud, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.weather_rain, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.weather_snow, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.weather_fog, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.weather_lightning, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void style_panel(lv_obj_t *panel, uint32_t color, int radius)
@@ -293,6 +469,29 @@ static void create_clock_view(lv_obj_t *root)
     s_ui.clock_large = make_label(s_ui.clock_view, &lv_font_lastvakt_clock_96, COLOR_TEXT);
     lv_label_set_text(s_ui.clock_large, "--:--");
     lv_obj_align(s_ui.clock_large, LV_ALIGN_TOP_MID, 0, 67);
+
+    s_ui.weather_temperature = make_label(s_ui.clock_view, &lv_font_montserrat_48, COLOR_MUTED);
+    lv_obj_set_width(s_ui.weather_temperature, 105);
+    lv_obj_set_style_text_align(s_ui.weather_temperature, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+    lv_label_set_text(s_ui.weather_temperature, "--");
+    lv_obj_set_pos(s_ui.weather_temperature, 35, 92);
+
+    lv_obj_t *weather_unit = make_label(s_ui.clock_view, &lv_font_montserrat_20, COLOR_MUTED);
+    lv_label_set_text(weather_unit, "°C");
+    lv_obj_set_pos(weather_unit, 145, 99);
+
+    lv_obj_t *weather_place = make_label(s_ui.clock_view, &lv_font_lastvakt_12, COLOR_CYAN);
+    lv_obj_set_width(weather_place, 155);
+    lv_obj_set_style_text_align(weather_place, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_label_set_text(weather_place, "UTE • ÄLVSJÖ");
+    lv_obj_set_pos(weather_place, 29, 153);
+
+    create_weather_icon(s_ui.clock_view);
+    s_ui.weather_condition = make_label(s_ui.clock_view, &lv_font_lastvakt_12, COLOR_MUTED);
+    lv_obj_set_width(s_ui.weather_condition, 170);
+    lv_obj_set_style_text_align(s_ui.weather_condition, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_label_set_text(s_ui.weather_condition, "Hämtar väder…");
+    lv_obj_set_pos(s_ui.weather_condition, 610, 164);
 
     s_ui.date = make_label(s_ui.clock_view, &lv_font_lastvakt_24, COLOR_MUTED);
     lv_label_set_text(s_ui.date, "Svensk tid");
@@ -532,6 +731,11 @@ static void create_status_view(lv_obj_t *root)
     s_ui.status_tibber = create_status_row(s_ui.status_view, 232, "TIBBER PULSE");
     s_ui.status_calendar = create_status_row(s_ui.status_view, 304, "FAMILJEKALENDER");
 
+    s_ui.status_weather = make_label(s_ui.status_view, &lv_font_lastvakt_12, COLOR_MUTED);
+    lv_obj_set_width(s_ui.status_weather, 480);
+    lv_label_set_text(s_ui.status_weather, "Väder: hämtar Älvsjö • Open-Meteo");
+    lv_obj_set_pos(s_ui.status_weather, 54, 390);
+
     lv_obj_t *qr_caption = make_label(s_ui.status_view, &lv_font_lastvakt_12, COLOR_CYAN);
     lv_label_set_text(qr_caption, "ÖPPNA INSTÄLLNINGAR");
     lv_obj_align(qr_caption, LV_ALIGN_TOP_RIGHT, -50, 91);
@@ -583,6 +787,50 @@ static void ui_timer(lv_timer_t *timer)
     lv_label_set_text(s_ui.calendar_clock, clock_text);
     lv_label_set_text(s_ui.status_clock, clock_text);
     lv_label_set_text(s_ui.date, date_text);
+
+    weather_sample_t weather = {0};
+    const weather_source_state_t weather_state = weather_source_get(&weather);
+    if (weather.available) {
+        char temperature[12];
+        const int rounded_temperature =
+            (int)(weather.temperature_c + (weather.temperature_c >= 0.0f ? 0.5f : -0.5f));
+        snprintf(temperature, sizeof(temperature), "%d", rounded_temperature);
+        lv_label_set_text(s_ui.weather_temperature, temperature);
+        lv_label_set_text(s_ui.weather_condition, weather_description(weather.weather_code));
+        update_weather_icon(&weather);
+
+        char exact_temperature[16];
+        snprintf(exact_temperature, sizeof(exact_temperature), "%.1f", weather.temperature_c);
+        for (char *p = exact_temperature; *p != '\0'; ++p) {
+            if (*p == '.') *p = ',';
+        }
+        char weather_status[96];
+        snprintf(
+            weather_status,
+            sizeof(weather_status),
+            "Väder: %s C i Älvsjö%s • Open-Meteo",
+            exact_temperature,
+            weather_state == WEATHER_SOURCE_STALE ? " • senaste värdet" : "");
+        lv_label_set_text(s_ui.status_weather, weather_status);
+        const uint32_t weather_color =
+            weather_state == WEATHER_SOURCE_READY ? COLOR_TEXT : COLOR_WARNING;
+        lv_obj_set_style_text_color(s_ui.weather_temperature, lv_color_hex(weather_color), LV_PART_MAIN);
+        lv_obj_set_style_text_color(s_ui.weather_condition, lv_color_hex(weather_color), LV_PART_MAIN);
+        lv_obj_set_style_text_color(s_ui.status_weather, lv_color_hex(weather_color), LV_PART_MAIN);
+    } else {
+        lv_label_set_text(s_ui.weather_temperature, "--");
+        lv_label_set_text(
+            s_ui.weather_condition,
+            weather_state == WEATHER_SOURCE_SYNCING ? "Hämtar väder…" : "Vädret är offline");
+        lv_label_set_text(
+            s_ui.status_weather,
+            weather_state == WEATHER_SOURCE_SYNCING
+                ? "Väder: hämtar Älvsjö • Open-Meteo"
+                : "Väder: kunde inte hämtas • försöker igen");
+        lv_obj_set_style_text_color(s_ui.weather_temperature, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
+        lv_obj_set_style_text_color(s_ui.weather_condition, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
+        lv_obj_set_style_text_color(s_ui.status_weather, lv_color_hex(COLOR_WARNING), LV_PART_MAIN);
+    }
 
     lv_label_set_text(s_ui.status_network, network_setup_status_text());
     lv_obj_set_style_text_color(

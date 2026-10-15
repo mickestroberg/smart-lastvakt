@@ -11,9 +11,9 @@ Datum: 2026-10-15
 - LVGL: 8.4.0
 - Flash: 16 MB QIO, 80 MHz
 - PSRAM: 8 MB OPI, 80 MHz
-- Appbild: 1 414 480 byte
+- Appbild: 1 536 832 byte
 - Apppartition: 8 388 608 byte
-- Ledigt i apppartitionen: 6 974 128 byte (83 %)
+- Ledigt i apppartitionen: 6 851 776 byte (82 %)
 
 ESP-IDF-bygget slutfördes utan kompilerings- eller länkfel. Bootloader, partitionstabell och appbild skrevs till kortet och esptool verifierade hashen för samtliga skrivningar.
 
@@ -25,7 +25,7 @@ Startloggen bekräftade:
 - GT911-pekkontroller med ID `0x39,0x31,0x31`;
 - registrerad pekinmatning och startad LVGL-task;
 - återanslutning till sparat Wi-Fi och installationssida på `192.168.10.199`;
-- startad klocka, installationssida, kalender och Tibber-fasvy utan omstart eller panik.
+- startad klocka, väder, installationssida, kalender och Tibber-fasvy utan omstart eller panik.
 
 Efter nätverkskonfiguration verifierades även:
 
@@ -35,7 +35,8 @@ Efter nätverkskonfiguration verifierades även:
 - startad live-webbsocket utan återanslutningsfel under kontrollperioden;
 - NTP-synkroniserad svensk tid och automatisk minutvis NTP-återprovning om den första synkroniseringen misslyckas;
 - validerad TLS-kedja till Google Kalender, fullständig iCal-hämtning och hittad nästa händelse;
-- inläsning och sortering av sex kommande kalenderhändelser till den tryckbara kalenderöversikten.
+- inläsning och sortering av sex kommande kalenderhändelser till den tryckbara kalenderöversikten;
+- hämtning från Open-Meteo av 11,5 °C och WMO-väderkod 3 för Älvsjö, samtidigt som kalender och Tibber fortsatte fungera;
 - systemstatussida med aktuell nätverksadress, tydlig tidskälla, Tibber- och kalenderstatus samt QR-kod till installationssidan.
 
 TLS-arbetsminnet placeras i kortets PSRAM och dynamiska TLS-buffertar används. Samtidigt reserveras internt DMA-minne och LVGL:s delbuffert är anpassad så att kalenderhämtning, flimmerfri bild och Tibbers liveanslutning fungerar samtidigt. Om Tibber Pulse tillfälligt saknar data fortsätter vyn med simulerade värden och försöker återansluta automatiskt.
@@ -56,4 +57,4 @@ Backupen hålls utanför Git-förrådet eftersom den kan innehålla kortspecifik
 |---|---:|---:|---|
 | `bootloader.bin` | `0x0000` | 22 288 byte | `381F63F3142217E7CE4A87A524B81F72F197321A859B259263961399BBE0AADD` |
 | `partition-table.bin` | `0x8000` | 3 072 byte | `776239783A4A8CE1386FE68450F1D70759738C7269D8A8290837F45BC397D4A7` |
-| `lastvakt_display.bin` | `0x10000` | 1 414 480 byte | `0CD5D18D5DAA11A8BCB6B9A262F67052C71F74E5711DF3584E9ABCF82EF53500` |
+| `lastvakt_display.bin` | `0x10000` | 1 536 832 byte | `4F5B011BC08BBF2B449032B45F75BD4028E5B15AED9FF64E9363BC0C79E4B964` |

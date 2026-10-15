@@ -17,6 +17,7 @@
 #include "network_setup.h"
 #include "phase_source.h"
 #include "ui.h"
+#include "weather_source.h"
 
 static const char *TAG = "lastvakt";
 
@@ -40,6 +41,7 @@ void app_main(void)
     ESP_ERROR_CHECK(network_setup_start());
     phase_source_init();
     calendar_source_init();
+    weather_source_init();
 
     esp_lv_adapter_config_t adapter_config = ESP_LV_ADAPTER_DEFAULT_CONFIG();
     adapter_config.task_stack_size = 12 * 1024;
@@ -73,5 +75,5 @@ void app_main(void)
     }
 
     app_time_start_network_sync();
-    ESP_LOGI(TAG, "Clock, calendar, setup page and Tibber phase view started");
+    ESP_LOGI(TAG, "Clock, weather, calendar, setup page and Tibber phase view started");
 }

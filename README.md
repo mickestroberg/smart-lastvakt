@@ -9,6 +9,7 @@ Standardvärdet för huvudsäkringen är **25 A**.
 ## Funktioner
 
 - Extra stor klocka, svenskt datum och automatisk CET/CEST.
+- Aktuell utetemperatur i Älvsjö och ritade väderikoner för dag, natt, moln, dimma, regn, snö och åska. Vädret uppdateras var 15:e minut via [Open-Meteo](https://open-meteo.com/).
 - Kortets batteribackade PCF85063A används vid start; NTP rättar tiden efter Wi-Fi-anslutning.
 - Tryck på **SMART LASTVAKT** för en ren systemstatussida med Wi-Fi, tidskälla, Tibber, kalender och en QR-kod till enhetens lokala installationssida.
 - Nästa händelse från familjens privata Google-kalender visas direkt på klockvyn. Tryck på kalenderfältet för en egen sida med de sex närmaste händelserna.
@@ -77,6 +78,7 @@ De tre färdiga bilderna ligger även i `firmware/` och har följande offset:
 
 - `main/network_setup.c` – Wi-Fi, NVS och den lokala installationssidan.
 - `main/calendar_source.c` – hämtar, tolkar och sorterar kommande kalenderhändelser från privat iCal.
+- `main/weather_source.c` – hämtar aktuellt väder för Älvsjö och behåller senaste värdet vid tillfälliga anslutningsfel.
 - `main/tibber_client.c` – Tibbers GraphQL- och WebSocket-klient.
 - `main/phase_source.c` – väljer livevärden eller simulering.
 - `main/app_time.c` – RTC, NTP och svensk tidszon.
