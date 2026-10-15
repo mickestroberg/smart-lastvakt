@@ -11,9 +11,9 @@ Datum: 2026-10-15
 - LVGL: 8.4.0
 - Flash: 16 MB QIO, 80 MHz
 - PSRAM: 8 MB OPI, 80 MHz
-- Appbild: 1 544 416 byte
+- Appbild: 1 589 648 byte
 - Apppartition: 8 388 608 byte
-- Ledigt i apppartitionen: 6 844 192 byte (82 %)
+- Ledigt i apppartitionen: 6 798 960 byte (81 %)
 
 ESP-IDF-bygget slutfördes utan kompilerings- eller länkfel. Bootloader, partitionstabell och appbild skrevs till kortet och esptool verifierade hashen för samtliga skrivningar.
 
@@ -39,6 +39,7 @@ Efter nätverkskonfiguration verifierades även:
 - hämtning från Open-Meteo av 11,5 °C och WMO-väderkod 3 för Älvsjö, samtidigt som kalender och Tibber fortsatte fungera;
 - skrivskyddad lokal anslutning till Shelly Plug S Gen3 på `192.168.68.121`, med avläst reläläge, effekt och cirka 239 V samtidigt som övriga datakällor fortsatte fungera;
 - egen Shelly-sida med lägena REDO, KÖR och STRÖMLÖS samt två sekunders långtryck och separat bekräftelse före reläändring;
+- egen 48-punktsfont med svenska tecken för Shelly-lägena samt filtrering som ersätter kalenderemoji utan skärmglyf med en punktmarkör;
 - systemstatussida med aktuell nätverksadress, tydlig tidskälla, Tibber- och kalenderstatus samt QR-kod till installationssidan.
 
 TLS-arbetsminnet placeras i kortets PSRAM och dynamiska TLS-buffertar används. Samtidigt reserveras internt DMA-minne och LVGL:s delbuffert är anpassad så att kalenderhämtning, flimmerfri bild och Tibbers liveanslutning fungerar samtidigt. Om Tibber Pulse tillfälligt saknar data fortsätter vyn med simulerade värden och försöker återansluta automatiskt.
@@ -59,4 +60,4 @@ Backupen hålls utanför Git-förrådet eftersom den kan innehålla kortspecifik
 |---|---:|---:|---|
 | `bootloader.bin` | `0x0000` | 22 288 byte | `381F63F3142217E7CE4A87A524B81F72F197321A859B259263961399BBE0AADD` |
 | `partition-table.bin` | `0x8000` | 3 072 byte | `776239783A4A8CE1386FE68450F1D70759738C7269D8A8290837F45BC397D4A7` |
-| `lastvakt_display.bin` | `0x10000` | 1 544 416 byte | `473A81BA1A8A4D09D34150CA7A1077BB00BBDC88F6D9BAD28C6CE17400B39970` |
+| `lastvakt_display.bin` | `0x10000` | 1 589 648 byte | `6947037266A506D61EEE3FAEBC3547AAD257706D7198EBBF673B0C4CE3B4C7CF` |

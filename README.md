@@ -13,6 +13,7 @@ Standardvärdet för huvudsäkringen är **25 A**.
 - Kortets batteribackade PCF85063A används vid start; NTP rättar tiden efter Wi-Fi-anslutning.
 - Tryck på **SMART LASTVAKT** för en ren systemstatussida med Wi-Fi, tidskälla, Tibber, kalender och en QR-kod till enhetens lokala installationssida.
 - Nästa händelse från familjens privata Google-kalender visas direkt på klockvyn. Tryck på kalenderfältet för en egen sida med de sex närmaste händelserna.
+- Kalenderemoji som den inbyggda skärmfonten inte kan rita ersätts med en ren punktmarkör i stället för tomma teckenrutor.
 - Kalendern uppdateras var 15:e minut och vanliga dagliga, veckovisa, månatliga och årliga upprepningar stöds.
 - Tibber GraphQL-abonnemang med `currentL1`, `currentL2` och `currentL3` i realtid.
 - Lokal mätning från Shelly Plug S Gen3: **REDO**, **KÖR** eller **STRÖMLÖS** och aktuell effekt på huvudvyn samt ström, spänning och temperatur på en egen Shelly-sida.
@@ -86,5 +87,6 @@ De tre färdiga bilderna ligger även i `firmware/` och har följande offset:
 - `main/phase_source.c` – väljer livevärden eller simulering.
 - `main/app_time.c` – RTC, NTP och svensk tidszon.
 - `main/ui.c` – LVGL-gränssnittet och vyväxlingen.
+- `main/fonts/lv_font_lastvakt_48.c` – stor skärmfont med svenska Å, Ä och Ö för Shelly-lägena.
 
 Kort- och bildskärmsinitieringen bygger på Waveshares officiella LVGL v8-exempel för kortet. Se [BUILD-REPORT.md](BUILD-REPORT.md) för den provade bygg- och enhetsstatusen.

@@ -14,6 +14,7 @@ idf_component_register(
         "fonts/lv_font_lastvakt_16.c"
         "fonts/lv_font_lastvakt_20.c"
         "fonts/lv_font_lastvakt_24.c"
+        "fonts/lv_font_lastvakt_48.c"
         "fonts/lv_font_lastvakt_clock_96.c"
         "../components/waveshare_rgb_lcd_port.c"
     INCLUDE_DIRS

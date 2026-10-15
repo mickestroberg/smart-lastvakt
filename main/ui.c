@@ -1,6 +1,7 @@
 #include "ui.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -209,11 +210,155 @@ static void format_calendar_when(char *buffer, size_t buffer_size, const calenda
     }
 }
 
+static bool append_text(char *output, size_t output_size, size_t *output_length, const char *text, size_t length)
+{
+    if (*output_length + length >= output_size) return false;
+    memcpy(output + *output_length, text, length);
+    *output_length += length;
+    output[*output_length] = '\0';
+    return true;
+}
+
+static size_t utf8_sequence_length(unsigned char first)
+{
+    if (first < 0x80) return 1;
+    if ((first & 0xE0) == 0xC0) return 2;
+    if ((first & 0xF0) == 0xE0) return 3;
+    if ((first & 0xF8) == 0xF0) return 4;
+    return 1;
+}
+
+static const char *latin1_ascii(unsigned char second)
+{
+    if (second >= 0x80 && second <= 0x85) return "A";
+    if (second == 0x87) return "C";
+    if (second >= 0x88 && second <= 0x8B) return "E";
+    if (second >= 0x8C && second <= 0x8F) return "I";
+    if (second == 0x91) return "N";
+    if (second >= 0x92 && second <= 0x96) return "O";
+    if (second >= 0x99 && second <= 0x9C) return "U";
+    if (second == 0x9D) return "Y";
+    if (second >= 0xA0 && second <= 0xA5) return "a";
+    if (second == 0xA7) return "c";
+    if (second >= 0xA8 && second <= 0xAB) return "e";
+    if (second >= 0xAC && second <= 0xAF) return "i";
+    if (second == 0xB1) return "n";
+    if (second >= 0xB2 && second <= 0xB6) return "o";
+    if (second >= 0xB9 && second <= 0xBC) return "u";
+    if (second == 0xBD || second == 0xBF) return "y";
+    return NULL;
+}
+
+static void sanitize_calendar_title(const char *input, char *output, size_t output_size)
+{
+    static const char bullet[] = "•";
+    size_t input_index = 0;
+    size_t output_length = 0;
+    bool unknown_run = false;
+    output[0] = '\0';
+
+    while (input[input_index] != '\0') {
+        const unsigned char first = (unsigned char)input[input_index];
+        const size_t sequence_length = utf8_sequence_length(first);
+        const size_t remaining = strlen(input + input_index);
+        if (sequence_length > remaining) break;
+
+        if (first >= 0x20 && first < 0x7F) {
+            const char ascii = (char)first;
+            if (!append_text(output, output_size, &output_length, &ascii, 1)) break;
+            if (ascii != ' ') unknown_run = false;
+            ++input_index;
+            continue;
+        }
+
+        if (sequence_length == 2 && first == 0xC3) {
+            const unsigned char second = (unsigned char)input[input_index + 1];
+            const bool swedish = second == 0x84 || second == 0x85 || second == 0x96 ||
+                                 second == 0xA4 || second == 0xA5 || second == 0xB6;
+            if (swedish) {
+                if (!append_text(output, output_size, &output_length, input + input_index, 2)) break;
+                unknown_run = false;
+            } else if (second == 0x9F) {
+                if (!append_text(output, output_size, &output_length, "ss", 2)) break;
+                unknown_run = false;
+            } else {
+                const char *replacement = latin1_ascii(second);
+                if (replacement != NULL) {
+                    if (!append_text(output, output_size, &output_length, replacement, 1)) break;
+                    unknown_run = false;
+                } else if (!unknown_run) {
+                    if (!append_text(output, output_size, &output_length, bullet, sizeof(bullet) - 1)) break;
+                    unknown_run = true;
+                }
+            }
+            input_index += 2;
+            continue;
+        }
+
+        if (sequence_length == 2 && first == 0xC2 && (unsigned char)input[input_index + 1] == 0xA0) {
+            if (!append_text(output, output_size, &output_length, " ", 1)) break;
+            input_index += 2;
+            continue;
+        }
+
+        if (sequence_length == 3 && first == 0xE2) {
+            const unsigned char second = (unsigned char)input[input_index + 1];
+            const unsigned char third = (unsigned char)input[input_index + 2];
+            if (second == 0x80 && (third == 0xA2 || third == 0xA6)) {
+                if (!append_text(output, output_size, &output_length, input + input_index, 3)) break;
+                unknown_run = false;
+                input_index += 3;
+                continue;
+            }
+            if (second == 0x80 && (third == 0x93 || third == 0x94)) {
+                if (!append_text(output, output_size, &output_length, "-", 1)) break;
+                unknown_run = false;
+                input_index += 3;
+                continue;
+            }
+            if (second == 0x80 && (third == 0x98 || third == 0x99)) {
+                if (!append_text(output, output_size, &output_length, "'", 1)) break;
+                unknown_run = false;
+                input_index += 3;
+                continue;
+            }
+            if (second == 0x80 && (third == 0x9C || third == 0x9D)) {
+                if (!append_text(output, output_size, &output_length, "\"", 1)) break;
+                unknown_run = false;
+                input_index += 3;
+                continue;
+            }
+            if ((second == 0x80 && third == 0x8D) || (second == 0xB8 && (third == 0x8E || third == 0x8F))) {
+                input_index += 3;
+                continue;
+            }
+        }
+
+        const bool skin_tone = sequence_length == 4 && first == 0xF0 &&
+                               (unsigned char)input[input_index + 1] == 0x9F &&
+                               (unsigned char)input[input_index + 2] == 0x8F &&
+                               (unsigned char)input[input_index + 3] >= 0xBB &&
+                               (unsigned char)input[input_index + 3] <= 0xBF;
+        if (!skin_tone && !unknown_run) {
+            if (!append_text(output, output_size, &output_length, bullet, sizeof(bullet) - 1)) break;
+            unknown_run = true;
+        }
+        input_index += sequence_length;
+    }
+
+    while (output_length > 0 && output[output_length - 1] == ' ') {
+        output[--output_length] = '\0';
+    }
+    if (output_length == 0) snprintf(output, output_size, "Kalenderhändelse");
+}
+
 static void format_calendar_event(char *buffer, size_t buffer_size, const calendar_event_t *event)
 {
     char when[48];
+    char title[128];
     format_calendar_when(when, sizeof(when), event);
-    snprintf(buffer, buffer_size, "%s • %s", when, event->title);
+    sanitize_calendar_title(event->title, title, sizeof(title));
+    snprintf(buffer, buffer_size, "%s • %s", when, title);
 }
 
 static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font, uint32_t color)
@@ -914,7 +1059,7 @@ static void create_shelly_view(lv_obj_t *root)
     lv_label_set_text(state_caption, "UTTAGETS LÄGE");
     lv_obj_set_pos(state_caption, 24, 20);
 
-    s_ui.shelly_state_large = make_label(state_panel, &lv_font_montserrat_48, COLOR_MINT);
+    s_ui.shelly_state_large = make_label(state_panel, &lv_font_lastvakt_48, COLOR_MINT);
     lv_label_set_text(s_ui.shelly_state_large, "ANSLUTER");
     lv_obj_set_pos(s_ui.shelly_state_large, 24, 55);
 
@@ -1252,9 +1397,11 @@ static void ui_timer(lv_timer_t *timer)
     for (size_t i = 0; i < CALENDAR_EVENT_LIMIT; ++i) {
         if (i < calendar_event_count) {
             char when[48];
+            char title[128];
             format_calendar_when(when, sizeof(when), &calendar_events[i]);
+            sanitize_calendar_title(calendar_events[i].title, title, sizeof(title));
             lv_label_set_text(s_ui.calendar_when[i], when);
-            lv_label_set_text(s_ui.calendar_title[i], calendar_events[i].title);
+            lv_label_set_text(s_ui.calendar_title[i], title);
             lv_obj_clear_flag(s_ui.calendar_row[i], LV_OBJ_FLAG_HIDDEN);
         } else {
             lv_obj_add_flag(s_ui.calendar_row[i], LV_OBJ_FLAG_HIDDEN);
