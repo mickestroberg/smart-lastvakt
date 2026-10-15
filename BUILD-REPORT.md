@@ -11,9 +11,9 @@ Datum: 2026-10-15
 - LVGL: 8.4.0
 - Flash: 16 MB QIO, 80 MHz
 - PSRAM: 8 MB OPI, 80 MHz
-- Appbild: 1 394 192 byte
+- Appbild: 1 404 656 byte
 - Apppartition: 8 388 608 byte
-- Ledigt i apppartitionen: 6 994 416 byte (83 %)
+- Ledigt i apppartitionen: 6 983 952 byte (83 %)
 
 ESP-IDF-bygget slutfördes utan kompilerings- eller länkfel. Bootloader, partitionstabell och appbild skrevs till kortet och esptool verifierade hashen för samtliga skrivningar.
 
@@ -25,16 +25,17 @@ Startloggen bekräftade:
 - GT911-pekkontroller med ID `0x39,0x31,0x31`;
 - registrerad pekinmatning och startad LVGL-task;
 - återanslutning till sparat Wi-Fi och installationssida på `192.168.10.199`;
-- startad klocka, installationssida och Tibber-fasvy utan omstart eller panik.
+- startad klocka, installationssida, kalender och Tibber-fasvy utan omstart eller panik.
 
 Efter nätverkskonfiguration verifierades även:
 
 - återanslutning till sparat Wi-Fi och svensk tid via NTP;
 - godkänd Tibber-token och hämtning av ett hem med realtidsmätning;
 - validerad TLS-kedja för både Tibber API och live-webbsocket;
-- startad live-webbsocket utan återanslutningsfel under kontrollperioden.
+- startad live-webbsocket utan återanslutningsfel under kontrollperioden;
+- validerad TLS-kedja till Google Kalender, fullständig iCal-hämtning och hittad nästa händelse.
 
-TLS-arbetsminnet placeras i kortets PSRAM så att certifikatkedjan kan verifieras utan att det interna RAM-minnet tar slut. Om Tibber Pulse tillfälligt saknar data fortsätter vyn med simulerade värden och försöker återansluta automatiskt.
+TLS-arbetsminnet placeras i kortets PSRAM och dynamiska TLS-buffertar används. Samtidigt reserveras internt DMA-minne och LVGL:s delbuffert är anpassad så att kalenderhämtning, flimmerfri bild och Tibbers liveanslutning fungerar samtidigt. Om Tibber Pulse tillfälligt saknar data fortsätter vyn med simulerade värden och försöker återansluta automatiskt.
 
 ## Fabriksbackup
 
@@ -52,4 +53,4 @@ Backupen hålls utanför Git-förrådet eftersom den kan innehålla kortspecifik
 |---|---:|---:|---|
 | `bootloader.bin` | `0x0000` | 22 288 byte | `381F63F3142217E7CE4A87A524B81F72F197321A859B259263961399BBE0AADD` |
 | `partition-table.bin` | `0x8000` | 3 072 byte | `776239783A4A8CE1386FE68450F1D70759738C7269D8A8290837F45BC397D4A7` |
-| `lastvakt_display.bin` | `0x10000` | 1 394 192 byte | `C2B97BE98FF039FF690E60292F684AFDC38E4323C8EA8E14EBD2E4E926B64ABD` |
+| `lastvakt_display.bin` | `0x10000` | 1 404 656 byte | `3E4D71ADB57FE6EF7C253C2F2C4A333C6C04193BC5B897412790DF4C1918B6D7` |

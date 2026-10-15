@@ -8,8 +8,11 @@
   <text class="warn small" x="656" y="44">SIMULERING</text>
   <text class="white clock" x="400" y="172" text-anchor="middle">14:27</text>
   <text class="muted medium" x="400" y="222" text-anchor="middle">Onsdag 15 oktober</text>
-  <text class="muted small" x="400" y="254" text-anchor="middle">NTP • svensk tid</text>
-  <text class="muted small" x="400" y="277" text-anchor="middle">Wi-Fi anslutet • 192.168.10.199</text>
+  <text class="muted small" x="400" y="246" text-anchor="middle">NTP • svensk tid</text>
+  <text class="muted small" x="400" y="267" text-anchor="middle">Wi-Fi anslutet • 192.168.10.199</text>
+  <rect class="light" x="36" y="274" width="728" height="44" rx="14"/>
+  <text class="cyan small" x="52" y="302">KALENDER</text>
+  <text class="white label" x="154" y="303">Imorgon 18:00 • Middag hos farmor</text>
   <rect class="panel" x="36" y="328" width="728" height="122" rx="22"/>
   <text class="muted small" x="60" y="359">HÖGSTA FAS JUST NU</text>
   <text class="mint phase" x="60" y="394">Gott om marginal</text>

@@ -8,6 +8,7 @@
 #include "sdkconfig.h"
 
 #include "app_time.h"
+#include "calendar_source.h"
 #include "lastvakt_fonts.h"
 #include "network_setup.h"
 #include "phase_source.h"
@@ -36,6 +37,7 @@ typedef struct {
     lv_obj_t *date;
     lv_obj_t *time_status;
     lv_obj_t *network_status;
+    lv_obj_t *calendar_event;
     lv_obj_t *source_badge;
     lv_obj_t *source_badge_label;
     lv_obj_t *phase_source_status;
@@ -89,6 +91,52 @@ static void format_amps(char *buffer, size_t buffer_size, float current_a)
             *p = ',';
         }
     }
+}
+
+static void format_calendar_event(char *buffer, size_t buffer_size, const calendar_event_t *event)
+{
+    static const char *weekday[] = {"sön", "mån", "tis", "ons", "tors", "fre", "lör"};
+    static const char *month[] = {
+        "jan", "feb", "mar", "apr", "maj", "jun",
+        "jul", "aug", "sep", "okt", "nov", "dec",
+    };
+
+    time_t now = time(NULL);
+    struct tm current = {0};
+    struct tm tomorrow = {0};
+    struct tm start = {0};
+    localtime_r(&now, &current);
+    tomorrow = current;
+    ++tomorrow.tm_mday;
+    tomorrow.tm_isdst = -1;
+    mktime(&tomorrow);
+    localtime_r(&event->start, &start);
+
+    const bool today = start.tm_year == current.tm_year && start.tm_yday == current.tm_yday;
+    const bool next_day = start.tm_year == tomorrow.tm_year && start.tm_yday == tomorrow.tm_yday;
+    char when[48];
+    if (today && event->all_day) {
+        snprintf(when, sizeof(when), "Idag");
+    } else if (today) {
+        snprintf(when, sizeof(when), "Idag %02d:%02d", start.tm_hour, start.tm_min);
+    } else if (next_day && event->all_day) {
+        snprintf(when, sizeof(when), "Imorgon");
+    } else if (next_day) {
+        snprintf(when, sizeof(when), "Imorgon %02d:%02d", start.tm_hour, start.tm_min);
+    } else if (event->all_day) {
+        snprintf(when, sizeof(when), "%s %d %s", weekday[start.tm_wday], start.tm_mday, month[start.tm_mon]);
+    } else {
+        snprintf(
+            when,
+            sizeof(when),
+            "%s %d %s %02d:%02d",
+            weekday[start.tm_wday],
+            start.tm_mday,
+            month[start.tm_mon],
+            start.tm_hour,
+            start.tm_min);
+    }
+    snprintf(buffer, buffer_size, "%s • %s", when, event->title);
 }
 
 static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font, uint32_t color)
@@ -186,6 +234,21 @@ static void create_clock_view(lv_obj_t *root)
     s_ui.network_status = make_label(s_ui.clock_view, &lv_font_lastvakt_12, COLOR_MUTED);
     lv_label_set_text(s_ui.network_status, "Startar nätverk…");
     lv_obj_align(s_ui.network_status, LV_ALIGN_TOP_MID, 0, 255);
+
+    lv_obj_t *calendar_panel = lv_obj_create(s_ui.clock_view);
+    lv_obj_set_size(calendar_panel, 728, 44);
+    lv_obj_set_pos(calendar_panel, 36, 274);
+    style_panel(calendar_panel, COLOR_PANEL_LIGHT, 14);
+
+    lv_obj_t *calendar_caption = make_label(calendar_panel, &lv_font_lastvakt_12, COLOR_CYAN);
+    lv_label_set_text(calendar_caption, "KALENDER");
+    lv_obj_align(calendar_caption, LV_ALIGN_LEFT_MID, 16, 0);
+
+    s_ui.calendar_event = make_label(calendar_panel, &lv_font_lastvakt_16, COLOR_MUTED);
+    lv_obj_set_width(s_ui.calendar_event, 590);
+    lv_label_set_long_mode(s_ui.calendar_event, LV_LABEL_LONG_DOT);
+    lv_label_set_text(s_ui.calendar_event, "Lägg till iCal-adressen i Inställningar");
+    lv_obj_align(s_ui.calendar_event, LV_ALIGN_LEFT_MID, 118, 0);
 
     s_ui.load_panel = lv_obj_create(s_ui.clock_view);
     lv_obj_set_size(s_ui.load_panel, 728, 122);
@@ -330,6 +393,27 @@ static void ui_timer(lv_timer_t *timer)
     lv_label_set_text(s_ui.date, date_text);
     lv_label_set_text(s_ui.time_status, app_time_status_text());
     lv_label_set_text(s_ui.network_status, network_setup_status_text());
+
+    calendar_event_t calendar_event = {0};
+    const calendar_source_state_t calendar_state = calendar_source_get(&calendar_event);
+    if (calendar_state == CALENDAR_SOURCE_READY && calendar_event.available) {
+        char event_text[160];
+        format_calendar_event(event_text, sizeof(event_text), &calendar_event);
+        lv_label_set_text(s_ui.calendar_event, event_text);
+        lv_obj_set_style_text_color(s_ui.calendar_event, lv_color_hex(COLOR_TEXT), LV_PART_MAIN);
+    } else if (calendar_state == CALENDAR_SOURCE_READY) {
+        lv_label_set_text(s_ui.calendar_event, "Inga kommande händelser");
+        lv_obj_set_style_text_color(s_ui.calendar_event, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
+    } else if (calendar_state == CALENDAR_SOURCE_SYNCING) {
+        lv_label_set_text(s_ui.calendar_event, "Hämtar familjekalendern…");
+        lv_obj_set_style_text_color(s_ui.calendar_event, lv_color_hex(COLOR_CYAN), LV_PART_MAIN);
+    } else if (calendar_state == CALENDAR_SOURCE_ERROR) {
+        lv_label_set_text(s_ui.calendar_event, "Kalendern kunde inte hämtas");
+        lv_obj_set_style_text_color(s_ui.calendar_event, lv_color_hex(COLOR_WARNING), LV_PART_MAIN);
+    } else {
+        lv_label_set_text(s_ui.calendar_event, "Lägg till iCal-adressen i Inställningar");
+        lv_obj_set_style_text_color(s_ui.calendar_event, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
+    }
 
     phase_sample_t sample = phase_source_read();
     lv_label_set_text(s_ui.source_badge_label, sample.simulated ? "SIMULERING" : "TIBBER LIVE");

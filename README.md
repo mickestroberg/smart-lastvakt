@@ -10,27 +10,27 @@ Standardvärdet för huvudsäkringen är **25 A**.
 
 - Extra stor klocka, svenskt datum och automatisk CET/CEST.
 - Kortets batteribackade PCF85063A används vid start; NTP rättar tiden efter Wi-Fi-anslutning.
+- Nästa händelse från familjens privata Google-kalender visas direkt på klockvyn. Kalendern uppdateras var 15:e minut och vanliga dagliga, veckovisa, månatliga och årliga upprepningar stöds.
 - Tibber GraphQL-abonnemang med `currentL1`, `currentL2` och `currentL3` i realtid.
 - Simulerade fasvärden används automatiskt tills Tibber är konfigurerat eller om liveflödet är tillfälligt nere.
 - Tydliga belastningszoner: grönt till 10 A, orange till 17,5 A och rött över 17,5 A med 25 A huvudsäkring.
 - Automatisk fasvy i röd zon och återgång efter åtta sekunder.
 - Manuell växling mellan klocka och fasvy via pekskärmen.
-- Lokal installationssida för SSID, Wi-Fi-lösenord och Tibber Personal Access Token.
+- Lokal installationssida för SSID, Wi-Fi-lösenord, Tibber Personal Access Token och kalenderns hemliga iCal-adress.
 
 ## Planerade familjefunktioner
 
-- Visa nästa händelse från [familjens gemensamma Google-kalender](https://calendar.google.com/calendar/u/0?cid=MDJybHE4Z3NidjMyZXVuNGowZjduZWtwaWtAZ3JvdXAuY2FsZW5kYXIuZ29vZ2xlLmNvbQ) på klockvyn.
 - En kalenderöversikt med dagens och de närmaste kommande händelserna.
 - En enkel gemensam inköpslista med möjlighet att lägga till exempelvis ”mjölk” från mobil eller display.
 - Integrera Shelly-pluggen vid mikron för mätning och styrning när installationen kan göras på plats.
 
-Kalenderns vanliga webblänk är sparad här som referens men kan inte läsas direkt av displayen. Kalenderåtkomsten ska senare göras skrivskyddad via Google Calendar API eller en privat iCal-adress. Eventuella nycklar och privata adresser lagras endast på enheten, aldrig i Git-förrådet.
+Kalendern läses skrivskyddat via Googles hemliga iCal-adress. Adressen lagras endast på enheten, aldrig i Git-förrådet eller i loggarna.
 
 ## Första starten
 
 1. Starta displayen och anslut en mobil eller dator till nätverket `Lastvakt-Setup-XXXX`.
 2. Öppna `http://192.168.4.1`.
-3. Fyll i Wi-Fi-namn, Wi-Fi-lösenord och din Tibber Personal Access Token.
+3. Fyll i Wi-Fi-namn, Wi-Fi-lösenord, din Tibber Personal Access Token och kalenderns **Hemliga adress i iCal-format** från Google Kalender.
 4. Tryck **Spara och starta om**.
 
 Efter en lyckad anslutning visar displayen adressen där samma installationssida kan nås på det lokala nätverket. Om Wi-Fi-anslutningen misslyckas startas installationsnätverket igen.
@@ -39,7 +39,7 @@ En personlig token kan skapas på [Tibber Developer](https://developer.tibber.co
 
 ### Sekretess och säkerhet
 
-SSID, lösenord och token lagras i ESP32-enhetens NVS-minne och skrivs aldrig till projektfiler eller loggar. Installationssidan använder vanlig lokal HTTP och saknar egen inloggning; använd den därför bara på ett betrott hemnätverk och låt inte installationsnätverket vara åtkomligt längre än nödvändigt.
+SSID, lösenord, Tibber-token och kalenderadress lagras i ESP32-enhetens NVS-minne och skrivs aldrig till projektfiler eller loggar. Installationssidan använder vanlig lokal HTTP och saknar egen inloggning; använd den därför bara på ett betrott hemnätverk och låt inte installationsnätverket vara åtkomligt längre än nödvändigt.
 
 ## Bygga
 
@@ -75,6 +75,7 @@ De tre färdiga bilderna ligger även i `firmware/` och har följande offset:
 ## Struktur
 
 - `main/network_setup.c` – Wi-Fi, NVS och den lokala installationssidan.
+- `main/calendar_source.c` – hämtar och tolkar nästa kalenderhändelse från privat iCal.
 - `main/tibber_client.c` – Tibbers GraphQL- och WebSocket-klient.
 - `main/phase_source.c` – väljer livevärden eller simulering.
 - `main/app_time.c` – RTC, NTP och svensk tidszon.

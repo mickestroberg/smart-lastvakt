@@ -13,6 +13,7 @@
 
 #include "app_time.h"
 #include "app_config.h"
+#include "calendar_source.h"
 #include "network_setup.h"
 #include "phase_source.h"
 #include "ui.h"
@@ -38,6 +39,7 @@ void app_main(void)
     app_time_init();
     ESP_ERROR_CHECK(network_setup_start());
     phase_source_init();
+    calendar_source_init();
 
     esp_lv_adapter_config_t adapter_config = ESP_LV_ADAPTER_DEFAULT_CONFIG();
     adapter_config.task_stack_size = 12 * 1024;
@@ -50,6 +52,8 @@ void app_main(void)
         EXAMPLE_LCD_H_RES,
         EXAMPLE_LCD_V_RES,
         rotation);
+    /* Keep tear-free rendering while leaving internal DMA headroom for concurrent TLS. */
+    disp_config.profile.buffer_height = 30;
     disp_config.profile.use_psram = true;
 
     lv_display_t *display = esp_lv_adapter_register_display(&disp_config);
@@ -69,5 +73,5 @@ void app_main(void)
     }
 
     app_time_start_network_sync();
-    ESP_LOGI(TAG, "Clock, setup page and Tibber phase view started");
+    ESP_LOGI(TAG, "Clock, calendar, setup page and Tibber phase view started");
 }

@@ -45,13 +45,14 @@ static const char SETUP_HTML[] =
     "input{box-sizing:border-box;width:100%;padding:12px;border-radius:10px;border:1px solid #38506a;background:#13263a;color:white}"
     "button{margin-top:24px;padding:13px 22px;border:0;border-radius:22px;background:#34d6e7;color:#07111f;font-weight:700}"
     "small{color:#9eb0c0;display:block;margin-top:16px}</style></head><body><main>"
-    "<h1>Smart lastvakt</h1><p>Ange hemnätverket och din personliga Tibber-token. Uppgifterna sparas bara lokalt i displayen.</p>"
+    "<h1>Smart lastvakt</h1><p>Ange hemnätverket och anslutningarna. Uppgifterna sparas bara lokalt i displayen.</p>"
     "<form method='post' action='/save'>"
     "<label for='ssid'>Wi-Fi-namn (SSID)</label><input id='ssid' name='ssid' maxlength='32' required>"
     "<label for='password'>Wi-Fi-lösenord</label><input id='password' name='password' type='password' maxlength='64' placeholder='Lämna tomt för att behålla sparat'>"
     "<label for='token'>Tibber Personal Access Token</label><input id='token' name='token' type='password' maxlength='255' placeholder='Lämna tomt för att behålla sparad token'>"
+    "<label for='calendar'>Google Kalender – hemlig adress i iCal-format</label><input id='calendar' name='calendar' type='password' maxlength='255' placeholder='Lämna tomt för att behålla sparad adress'>"
     "<button type='submit'>Spara och starta om</button></form>"
-    "<small>Token skapas på developer.tibber.com. Efter omstart visas riktiga fasvärden när Tibber Pulse är tillgänglig.</small>"
+    "<small>Tibber-token skapas på developer.tibber.com. Kalenderadressen finns under Google Kalender → Inställningar → Integrera kalender → Hemlig adress i iCal-format.</small>"
     "</main></body></html>";
 
 static void start_setup_ap(void)
@@ -167,7 +168,7 @@ static void restart_task(void *arg)
 
 static esp_err_t save_post(httpd_req_t *req)
 {
-    if (req->content_len <= 0 || req->content_len > 1024) {
+    if (req->content_len <= 0 || req->content_len > 2048) {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Ogiltig formulärdata");
     }
 
@@ -188,9 +189,11 @@ static esp_err_t save_post(httpd_req_t *req)
     char ssid[LASTVAKT_SSID_MAX + 1] = {0};
     char password[LASTVAKT_WIFI_PASSWORD_MAX + 1] = {0};
     char token[LASTVAKT_TIBBER_TOKEN_MAX + 1] = {0};
+    char calendar[LASTVAKT_CALENDAR_URL_MAX + 1] = {0};
     form_value(body, "ssid", ssid, sizeof(ssid));
     form_value(body, "password", password, sizeof(password));
     form_value(body, "token", token, sizeof(token));
+    form_value(body, "calendar", calendar, sizeof(calendar));
     free(body);
 
     if (err != ESP_OK || ssid[0] == '\0') {
@@ -199,6 +202,7 @@ static esp_err_t save_post(httpd_req_t *req)
     snprintf(config.ssid, sizeof(config.ssid), "%s", ssid);
     if (password[0] != '\0') snprintf(config.wifi_password, sizeof(config.wifi_password), "%s", password);
     if (token[0] != '\0') snprintf(config.tibber_token, sizeof(config.tibber_token), "%s", token);
+    if (calendar[0] != '\0') snprintf(config.calendar_ical_url, sizeof(config.calendar_ical_url), "%s", calendar);
     config.tibber_home_id[0] = '\0';
 
     err = app_config_save(&config);

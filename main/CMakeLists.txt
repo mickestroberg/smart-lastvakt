@@ -3,6 +3,7 @@ idf_component_register(
         "main.c"
         "app_config.c"
         "app_time.c"
+        "calendar_source.c"
         "network_setup.c"
         "phase_source.c"
         "tibber_client.c"

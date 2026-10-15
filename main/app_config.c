@@ -52,6 +52,7 @@ esp_err_t app_config_load(app_config_t *config)
     if (err == ESP_OK) err = get_string(handle, "wifi_pass", config->wifi_password, sizeof(config->wifi_password));
     if (err == ESP_OK) err = get_string(handle, "tibber", config->tibber_token, sizeof(config->tibber_token));
     if (err == ESP_OK) err = get_string(handle, "home_id", config->tibber_home_id, sizeof(config->tibber_home_id));
+    if (err == ESP_OK) err = get_string(handle, "calendar", config->calendar_ical_url, sizeof(config->calendar_ical_url));
     nvs_close(handle);
     return err;
 }
@@ -68,6 +69,7 @@ esp_err_t app_config_save(const app_config_t *config)
     if (err == ESP_OK) err = nvs_set_str(handle, "wifi_pass", config->wifi_password);
     if (err == ESP_OK) err = nvs_set_str(handle, "tibber", config->tibber_token);
     if (err == ESP_OK) err = nvs_set_str(handle, "home_id", config->tibber_home_id);
+    if (err == ESP_OK) err = nvs_set_str(handle, "calendar", config->calendar_ical_url);
     if (err == ESP_OK) err = nvs_commit(handle);
     nvs_close(handle);
     return err;
@@ -94,4 +96,9 @@ bool app_config_has_wifi(const app_config_t *config)
 bool app_config_has_tibber(const app_config_t *config)
 {
     return config != NULL && config->tibber_token[0] != '\0';
+}
+
+bool app_config_has_calendar(const app_config_t *config)
+{
+    return config != NULL && config->calendar_ical_url[0] != '\0';
 }
