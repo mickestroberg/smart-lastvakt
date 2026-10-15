@@ -11,9 +11,9 @@ Datum: 2026-10-15
 - LVGL: 8.4.0
 - Flash: 16 MB QIO, 80 MHz
 - PSRAM: 8 MB OPI, 80 MHz
-- Appbild: 1 472 256 byte
+- Appbild: 1 394 192 byte
 - Apppartition: 8 388 608 byte
-- Ledigt i apppartitionen: 6 916 352 byte (82 %)
+- Ledigt i apppartitionen: 6 994 416 byte (83 %)
 
 ESP-IDF-bygget slutfördes utan kompilerings- eller länkfel. Bootloader, partitionstabell och appbild skrevs till kortet och esptool verifierade hashen för samtliga skrivningar.
 
@@ -24,8 +24,7 @@ Startloggen bekräftade:
 - korrekt ESP32-S3 och 8 MB PSRAM;
 - GT911-pekkontroller med ID `0x39,0x31,0x31`;
 - registrerad pekinmatning och startad LVGL-task;
-- startat installationsnät `Lastvakt-Setup-BC85`;
-- DHCP och installationssida på `192.168.4.1`;
+- återanslutning till sparat Wi-Fi och installationssida på `192.168.10.199`;
 - startad klocka, installationssida och Tibber-fasvy utan omstart eller panik.
 
 Efter nätverkskonfiguration verifierades även:
@@ -53,4 +52,4 @@ Backupen hålls utanför Git-förrådet eftersom den kan innehålla kortspecifik
 |---|---:|---:|---|
 | `bootloader.bin` | `0x0000` | 22 288 byte | `381F63F3142217E7CE4A87A524B81F72F197321A859B259263961399BBE0AADD` |
 | `partition-table.bin` | `0x8000` | 3 072 byte | `776239783A4A8CE1386FE68450F1D70759738C7269D8A8290837F45BC397D4A7` |
-| `lastvakt_display.bin` | `0x10000` | 1 472 256 byte | `63BEFC4AA731F3AE598CD7A3A205617C7386091868387AE43FC46D8DA4CB0358` |
+| `lastvakt_display.bin` | `0x10000` | 1 394 192 byte | `C2B97BE98FF039FF690E60292F684AFDC38E4323C8EA8E14EBD2E4E926B64ABD` |

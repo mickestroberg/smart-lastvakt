@@ -1,6 +1,6 @@
 # Smart lastvakt
 
-En svensk klocka och fasvakt för **Waveshare ESP32-S3-Touch-LCD-4.3B-BOX** (800 × 480, ESP32-S3-N16R8). Projektet visar Tibber Pulse-strömmarna för L1, L2 och L3 och växlar automatiskt till fasvyn när någon fas passerar 50 % av huvudsäkringen.
+En svensk klocka och fasvakt för **Waveshare ESP32-S3-Touch-LCD-4.3B-BOX** (800 × 480, ESP32-S3-N16R8). Projektet visar Tibber Pulse-strömmarna för L1, L2 och L3 och växlar automatiskt till fasvyn när någon fas går in i den röda zonen.
 
 Standardvärdet för huvudsäkringen är **25 A**.
 
@@ -8,11 +8,12 @@ Standardvärdet för huvudsäkringen är **25 A**.
 
 ## Funktioner
 
-- Stor klocka, svenskt datum och automatisk CET/CEST.
+- Extra stor klocka, svenskt datum och automatisk CET/CEST.
 - Kortets batteribackade PCF85063A används vid start; NTP rättar tiden efter Wi-Fi-anslutning.
 - Tibber GraphQL-abonnemang med `currentL1`, `currentL2` och `currentL3` i realtid.
 - Simulerade fasvärden används automatiskt tills Tibber är konfigurerat eller om liveflödet är tillfälligt nere.
-- Automatisk fasvy vid 50 % belastning och återgång efter åtta sekunder.
+- Tydliga belastningszoner: grönt till 10 A, orange till 17,5 A och rött över 17,5 A med 25 A huvudsäkring.
+- Automatisk fasvy i röd zon och återgång efter åtta sekunder.
 - Manuell växling mellan klocka och fasvy via pekskärmen.
 - Lokal installationssida för SSID, Wi-Fi-lösenord och Tibber Personal Access Token.
 
@@ -59,7 +60,7 @@ De tre färdiga bilderna ligger även i `firmware/` och har följande offset:
 `idf.py menuconfig` → **Example Configuration → Smart lastvakt** innehåller:
 
 - huvudsäkring per fas, standard 25 A;
-- belastningsgräns för automatisk fasvy, standard 50 %;
+- gränser för orange och röd zon, standard 40 respektive 70 % av huvudsäkringen;
 - hur länge fasvyn ligger kvar efter varningen, standard 8 sekunder.
 
 ## Struktur

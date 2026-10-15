@@ -18,9 +18,15 @@
 #define COLOR_TEXT 0xF3F7FA
 #define COLOR_MUTED 0x8CA0B3
 #define COLOR_CYAN 0x34D6E7
-#define COLOR_PURPLE 0x9B8AFB
 #define COLOR_MINT 0x56D6A7
 #define COLOR_WARNING 0xFFAA4C
+#define COLOR_DANGER 0xFF5A67
+
+typedef enum {
+    LOAD_ZONE_GREEN,
+    LOAD_ZONE_ORANGE,
+    LOAD_ZONE_RED,
+} load_zone_t;
 
 typedef struct {
     lv_obj_t *clock_view;
@@ -33,6 +39,8 @@ typedef struct {
     lv_obj_t *source_badge;
     lv_obj_t *source_badge_label;
     lv_obj_t *phase_source_status;
+    lv_obj_t *phase_alert_status;
+    lv_obj_t *load_panel;
     lv_obj_t *load_status;
     lv_obj_t *load_value;
     lv_obj_t *phase_amp[3];
@@ -45,6 +53,43 @@ typedef struct {
 } ui_state_t;
 
 static ui_state_t s_ui;
+
+static load_zone_t load_zone_for_current(float current_a, float main_fuse_a)
+{
+    const float green_limit_a = main_fuse_a * (float)CONFIG_LASTVAKT_ORANGE_PERCENT / 100.0f;
+    const float orange_limit_a = main_fuse_a * (float)CONFIG_LASTVAKT_RED_PERCENT / 100.0f;
+
+    if (current_a <= green_limit_a) {
+        return LOAD_ZONE_GREEN;
+    }
+    if (current_a <= orange_limit_a) {
+        return LOAD_ZONE_ORANGE;
+    }
+    return LOAD_ZONE_RED;
+}
+
+static uint32_t load_zone_color(load_zone_t zone)
+{
+    switch (zone) {
+        case LOAD_ZONE_ORANGE:
+            return COLOR_WARNING;
+        case LOAD_ZONE_RED:
+            return COLOR_DANGER;
+        case LOAD_ZONE_GREEN:
+        default:
+            return COLOR_MINT;
+    }
+}
+
+static void format_amps(char *buffer, size_t buffer_size, float current_a)
+{
+    snprintf(buffer, buffer_size, "%.1f A", current_a);
+    for (char *p = buffer; *p != '\0'; ++p) {
+        if (*p == '.') {
+            *p = ',';
+        }
+    }
+}
 
 static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font, uint32_t color)
 {
@@ -126,40 +171,40 @@ static void create_clock_view(lv_obj_t *root)
     lv_label_set_text(s_ui.source_badge_label, "SIMULERING");
     lv_obj_center(s_ui.source_badge_label);
 
-    s_ui.clock_large = make_label(s_ui.clock_view, &lv_font_montserrat_48, COLOR_TEXT);
+    s_ui.clock_large = make_label(s_ui.clock_view, &lv_font_lastvakt_clock_96, COLOR_TEXT);
     lv_label_set_text(s_ui.clock_large, "--:--");
-    lv_obj_align(s_ui.clock_large, LV_ALIGN_TOP_MID, 0, 96);
+    lv_obj_align(s_ui.clock_large, LV_ALIGN_TOP_MID, 0, 67);
 
     s_ui.date = make_label(s_ui.clock_view, &lv_font_lastvakt_24, COLOR_MUTED);
     lv_label_set_text(s_ui.date, "Svensk tid");
-    lv_obj_align(s_ui.date, LV_ALIGN_TOP_MID, 0, 164);
+    lv_obj_align(s_ui.date, LV_ALIGN_TOP_MID, 0, 190);
 
     s_ui.time_status = make_label(s_ui.clock_view, &lv_font_lastvakt_12, COLOR_MUTED);
     lv_label_set_text(s_ui.time_status, "Offline");
-    lv_obj_align(s_ui.time_status, LV_ALIGN_TOP_MID, 0, 207);
+    lv_obj_align(s_ui.time_status, LV_ALIGN_TOP_MID, 0, 232);
 
     s_ui.network_status = make_label(s_ui.clock_view, &lv_font_lastvakt_12, COLOR_MUTED);
     lv_label_set_text(s_ui.network_status, "Startar nätverk…");
-    lv_obj_align(s_ui.network_status, LV_ALIGN_TOP_MID, 0, 232);
+    lv_obj_align(s_ui.network_status, LV_ALIGN_TOP_MID, 0, 255);
 
-    lv_obj_t *load_panel = lv_obj_create(s_ui.clock_view);
-    lv_obj_set_size(load_panel, 728, 122);
-    lv_obj_align(load_panel, LV_ALIGN_BOTTOM_MID, 0, -30);
-    style_panel(load_panel, COLOR_PANEL, 22);
+    s_ui.load_panel = lv_obj_create(s_ui.clock_view);
+    lv_obj_set_size(s_ui.load_panel, 728, 122);
+    lv_obj_align(s_ui.load_panel, LV_ALIGN_BOTTOM_MID, 0, -30);
+    style_panel(s_ui.load_panel, COLOR_PANEL, 22);
 
-    lv_obj_t *load_caption = make_label(load_panel, &lv_font_lastvakt_12, COLOR_MUTED);
+    lv_obj_t *load_caption = make_label(s_ui.load_panel, &lv_font_lastvakt_12, COLOR_MUTED);
     lv_label_set_text(load_caption, "HÖGSTA FAS JUST NU");
     lv_obj_align(load_caption, LV_ALIGN_TOP_LEFT, 24, 19);
 
-    s_ui.load_status = make_label(load_panel, &lv_font_lastvakt_20, COLOR_MINT);
-    lv_label_set_text(s_ui.load_status, "Alla faser lugna");
+    s_ui.load_status = make_label(s_ui.load_panel, &lv_font_lastvakt_20, COLOR_MINT);
+    lv_label_set_text(s_ui.load_status, "Gott om marginal");
     lv_obj_align(s_ui.load_status, LV_ALIGN_TOP_LEFT, 24, 48);
 
-    s_ui.load_value = make_label(load_panel, &lv_font_lastvakt_24, COLOR_TEXT);
-    lv_label_set_text(s_ui.load_value, "0 %");
+    s_ui.load_value = make_label(s_ui.load_panel, &lv_font_lastvakt_24, COLOR_MINT);
+    lv_label_set_text(s_ui.load_value, "L1  0,0 A");
     lv_obj_align(s_ui.load_value, LV_ALIGN_RIGHT_MID, -170, 4);
 
-    lv_obj_t *button = make_button(load_panel, "Visa faser", view_button_event);
+    lv_obj_t *button = make_button(s_ui.load_panel, "Visa faser", view_button_event);
     lv_obj_align(button, LV_ALIGN_RIGHT_MID, -22, 0);
 }
 
@@ -217,19 +262,49 @@ static void create_phase_view(lv_obj_t *root)
     lv_label_set_text(s_ui.clock_small, "--:--");
     lv_obj_align(s_ui.clock_small, LV_ALIGN_TOP_RIGHT, -186, 25);
 
+    s_ui.phase_alert_status = make_label(s_ui.phase_view, &lv_font_lastvakt_16, COLOR_MINT);
+    lv_label_set_text(s_ui.phase_alert_status, "Gott om marginal");
+    lv_obj_align(s_ui.phase_alert_status, LV_ALIGN_TOP_RIGHT, -186, 57);
+
     lv_obj_t *button = make_button(s_ui.phase_view, "Klocka", view_button_event);
     lv_obj_align(button, LV_ALIGN_TOP_RIGHT, -36, 17);
 
-    create_phase_row(s_ui.phase_view, 0, 94, COLOR_CYAN);
-    create_phase_row(s_ui.phase_view, 1, 200, COLOR_PURPLE);
+    create_phase_row(s_ui.phase_view, 0, 94, COLOR_MINT);
+    create_phase_row(s_ui.phase_view, 1, 200, COLOR_MINT);
     create_phase_row(s_ui.phase_view, 2, 306, COLOR_MINT);
 
     lv_obj_t *hint = make_label(s_ui.phase_view, &lv_font_lastvakt_12, COLOR_MUTED);
-    lv_label_set_text_fmt(
-        hint,
-        "Automatisk fasvy över %d %% • huvudsäkring %d A",
-        CONFIG_LASTVAKT_ALERT_PERCENT,
-        CONFIG_LASTVAKT_MAIN_FUSE_A);
+    char green_limit[16];
+    char red_limit[16];
+    char hint_text[128];
+    snprintf(
+        green_limit,
+        sizeof(green_limit),
+        "%.0f",
+        CONFIG_LASTVAKT_MAIN_FUSE_A * (float)CONFIG_LASTVAKT_ORANGE_PERCENT / 100.0f);
+    snprintf(
+        red_limit,
+        sizeof(red_limit),
+        "%.1f",
+        CONFIG_LASTVAKT_MAIN_FUSE_A * (float)CONFIG_LASTVAKT_RED_PERCENT / 100.0f);
+    for (char *p = green_limit; *p != '\0'; ++p) {
+        if (*p == '.') {
+            *p = ',';
+        }
+    }
+    for (char *p = red_limit; *p != '\0'; ++p) {
+        if (*p == '.') {
+            *p = ',';
+        }
+    }
+    snprintf(
+        hint_text,
+        sizeof(hint_text),
+        "Grönt till %s A • orange till %s A • rött över %s A",
+        green_limit,
+        red_limit,
+        red_limit);
+    lv_label_set_text(hint, hint_text);
     lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -22);
 }
 
@@ -263,43 +338,55 @@ static void ui_timer(lv_timer_t *timer)
     lv_obj_set_style_text_color(s_ui.source_badge_label, lv_color_hex(sample.simulated ? COLOR_WARNING : COLOR_MINT), LV_PART_MAIN);
     lv_obj_set_style_text_color(s_ui.phase_source_status, lv_color_hex(sample.simulated ? COLOR_WARNING : COLOR_MINT), LV_PART_MAIN);
     const int highest = highest_phase(&sample);
-    const bool over_threshold = sample.percent[highest] >= (float)CONFIG_LASTVAKT_ALERT_PERCENT;
+    const load_zone_t highest_zone = load_zone_for_current(sample.current_a[highest], sample.main_fuse_a);
     const int64_t now_ms = esp_timer_get_time() / 1000;
 
-    static const uint32_t normal_colors[] = {COLOR_CYAN, COLOR_PURPLE, COLOR_MINT};
     for (int i = 0; i < 3; ++i) {
         char amps[20];
-        snprintf(amps, sizeof(amps), "%.1f A", sample.current_a[i]);
-        for (char *p = amps; *p != '\0'; ++p) {
-            if (*p == '.') {
-                *p = ',';
-            }
-        }
+        char percent[16];
+        format_amps(amps, sizeof(amps), sample.current_a[i]);
+        snprintf(percent, sizeof(percent), "%d %%", (int)(sample.percent[i] + 0.5f));
         lv_label_set_text(s_ui.phase_amp[i], amps);
-        lv_label_set_text_fmt(s_ui.phase_percent[i], "%.0f %%", sample.percent[i]);
+        lv_label_set_text(s_ui.phase_percent[i], percent);
         lv_bar_set_value(
             s_ui.phase_bar[i],
             sample.percent[i] > 100.0f ? 100 : (int)sample.percent[i],
             LV_ANIM_ON);
 
-        const bool row_warning = sample.percent[i] >= (float)CONFIG_LASTVAKT_ALERT_PERCENT;
+        const load_zone_t zone = load_zone_for_current(sample.current_a[i], sample.main_fuse_a);
+        const uint32_t zone_color = load_zone_color(zone);
         lv_obj_set_style_bg_color(
             s_ui.phase_bar[i],
-            lv_color_hex(row_warning ? COLOR_WARNING : normal_colors[i]),
+            lv_color_hex(zone_color),
             LV_PART_INDICATOR);
-        lv_obj_set_style_border_width(s_ui.phase_card[i], row_warning ? 2 : 0, LV_PART_MAIN);
-        lv_obj_set_style_border_color(s_ui.phase_card[i], lv_color_hex(COLOR_WARNING), LV_PART_MAIN);
+        lv_obj_set_style_text_color(s_ui.phase_amp[i], lv_color_hex(zone_color), LV_PART_MAIN);
+        lv_obj_set_style_text_color(s_ui.phase_percent[i], lv_color_hex(zone_color), LV_PART_MAIN);
+        lv_obj_set_style_border_width(s_ui.phase_card[i], zone == LOAD_ZONE_GREEN ? 0 : (zone == LOAD_ZONE_RED ? 2 : 1), LV_PART_MAIN);
+        lv_obj_set_style_border_color(s_ui.phase_card[i], lv_color_hex(zone_color), LV_PART_MAIN);
     }
 
-    lv_label_set_text_fmt(s_ui.load_value, "%.0f %%", sample.percent[highest]);
-    if (over_threshold) {
-        lv_label_set_text_fmt(s_ui.load_status, "L%d behöver uppmärksamhet", highest + 1);
-        lv_obj_set_style_text_color(s_ui.load_status, lv_color_hex(COLOR_WARNING), LV_PART_MAIN);
+    char highest_amps[20];
+    char load_value[40];
+    format_amps(highest_amps, sizeof(highest_amps), sample.current_a[highest]);
+    snprintf(load_value, sizeof(load_value), "L%d  %s", highest + 1, highest_amps);
+    lv_label_set_text(s_ui.load_value, load_value);
+
+    const uint32_t highest_color = load_zone_color(highest_zone);
+    lv_obj_set_style_text_color(s_ui.load_status, lv_color_hex(highest_color), LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_ui.load_value, lv_color_hex(highest_color), LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_ui.phase_alert_status, lv_color_hex(highest_color), LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_ui.load_panel, highest_zone == LOAD_ZONE_GREEN ? 0 : 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_ui.load_panel, lv_color_hex(highest_color), LV_PART_MAIN);
+
+    if (highest_zone == LOAD_ZONE_RED) {
+        lv_label_set_text(s_ui.load_status, "STARTA INGET MER");
+        lv_label_set_text(s_ui.phase_alert_status, "STARTA INGET MER");
         s_ui.last_over_threshold_ms = now_ms;
         show_phase_view(true);
     } else {
-        lv_label_set_text(s_ui.load_status, "Alla faser lugna");
-        lv_obj_set_style_text_color(s_ui.load_status, lv_color_hex(COLOR_MINT), LV_PART_MAIN);
+        const char *status_text = highest_zone == LOAD_ZONE_ORANGE ? "Undvik stora laster" : "Gott om marginal";
+        lv_label_set_text(s_ui.load_status, status_text);
+        lv_label_set_text(s_ui.phase_alert_status, status_text);
 
         const bool alert_hold_finished = now_ms - s_ui.last_over_threshold_ms >
                                          (int64_t)CONFIG_LASTVAKT_ALERT_HOLD_SECONDS * 1000;

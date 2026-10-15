@@ -1,18 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="480" viewBox="0 0 1600 480">
   <style>
-    .bg{fill:#07111f}.panel{fill:#0d1b2b}.light{fill:#13263a}.white{fill:#f3f7fa}.muted{fill:#8ca0b3}.cyan{fill:#34d6e7}.purple{fill:#9b8afb}.mint{fill:#56d6a7}.warn{fill:#ffaa4c}.label{font:600 16px Arial,sans-serif;letter-spacing:1px}.small{font:500 13px Arial,sans-serif}.medium{font:600 24px Arial,sans-serif}.clock{font:700 88px Arial,sans-serif}.phase{font:700 22px Arial,sans-serif}
+    .bg{fill:#07111f}.panel{fill:#0d1b2b}.light{fill:#13263a}.white{fill:#f3f7fa}.muted{fill:#8ca0b3}.cyan{fill:#34d6e7}.mint{fill:#56d6a7}.warn{fill:#ffaa4c}.danger{fill:#ff5a67}.label{font:600 16px Arial,sans-serif;letter-spacing:1px}.small{font:500 13px Arial,sans-serif}.medium{font:600 24px Arial,sans-serif}.clock{font:700 112px Arial,sans-serif}.phase{font:700 22px Arial,sans-serif}
   </style>
   <rect class="bg" width="800" height="480" rx="8"/>
   <text class="cyan label" x="36" y="43">SMART LASTVAKT</text>
   <rect x="636" y="22" width="128" height="34" rx="17" fill="#392814"/>
   <text class="warn small" x="656" y="44">SIMULERING</text>
-  <text class="white clock" x="400" y="171" text-anchor="middle">14:27</text>
-  <text class="muted medium" x="400" y="211" text-anchor="middle">Onsdag 15 oktober</text>
-  <text class="muted small" x="400" y="239" text-anchor="middle">RTC • svensk tid</text>
+  <text class="white clock" x="400" y="172" text-anchor="middle">14:27</text>
+  <text class="muted medium" x="400" y="222" text-anchor="middle">Onsdag 15 oktober</text>
+  <text class="muted small" x="400" y="254" text-anchor="middle">NTP • svensk tid</text>
+  <text class="muted small" x="400" y="277" text-anchor="middle">Wi-Fi anslutet • 192.168.10.199</text>
   <rect class="panel" x="36" y="328" width="728" height="122" rx="22"/>
   <text class="muted small" x="60" y="359">HÖGSTA FAS JUST NU</text>
-  <text class="mint phase" x="60" y="394">Alla faser lugna</text>
-  <text class="white medium" x="510" y="394">44 %</text>
+  <text class="mint phase" x="60" y="394">Gott om marginal</text>
+  <text class="mint medium" x="470" y="394">L2&#160;&#160;9,8 A</text>
   <rect class="light" x="616" y="366" width="126" height="46" rx="23"/>
   <text class="white label" x="679" y="395" text-anchor="middle">Visa faser</text>
 
@@ -21,23 +22,24 @@
   <text class="white phase" x="836" y="43">Fasbelastning</text>
   <text class="warn small" x="836" y="70">SIMULERADE TIBBER-VÄRDEN</text>
   <text class="white medium" x="1414" y="47" text-anchor="end">14:27</text>
+  <text class="danger label" x="1414" y="72" text-anchor="end">STARTA INGET MER</text>
   <rect class="light" x="1438" y="17" width="126" height="46" rx="23"/>
   <text class="white label" x="1501" y="46" text-anchor="middle">Klocka</text>
 
   <g transform="translate(836 94)">
     <rect class="panel" width="728" height="92" rx="18"/>
-    <text class="cyan phase" x="22" y="40">L1</text><text class="white phase" x="82" y="40">11,2 A</text><text class="muted label" x="675" y="40">56 %</text>
-    <rect x="82" y="62" width="624" height="12" rx="6" fill="#20354a"/><rect x="82" y="62" width="349" height="12" rx="6" class="warn"/>
+    <text class="mint phase" x="22" y="40">L1</text><text class="mint phase" x="82" y="40">8,6 A</text><text class="mint label" x="675" y="40">34 %</text>
+    <rect x="82" y="62" width="624" height="12" rx="6" fill="#20354a"/><rect x="82" y="62" width="215" height="12" rx="6" class="mint"/>
   </g>
   <g transform="translate(836 200)">
-    <rect class="panel" width="728" height="92" rx="18"/>
-    <text class="purple phase" x="22" y="40">L2</text><text class="white phase" x="82" y="40">7,1 A</text><text class="muted label" x="675" y="40">36 %</text>
-    <rect x="82" y="62" width="624" height="12" rx="6" fill="#20354a"/><rect x="82" y="62" width="225" height="12" rx="6" class="purple"/>
+    <rect class="panel" width="728" height="92" rx="18" stroke="#ffaa4c"/>
+    <text class="warn phase" x="22" y="40">L2</text><text class="warn phase" x="82" y="40">14,2 A</text><text class="warn label" x="675" y="40">57 %</text>
+    <rect x="82" y="62" width="624" height="12" rx="6" fill="#20354a"/><rect x="82" y="62" width="355" height="12" rx="6" class="warn"/>
   </g>
   <g transform="translate(836 306)">
-    <rect class="panel" width="728" height="92" rx="18"/>
-    <text class="mint phase" x="22" y="40">L3</text><text class="white phase" x="82" y="40">5,4 A</text><text class="muted label" x="675" y="40">27 %</text>
-    <rect x="82" y="62" width="624" height="12" rx="6" fill="#20354a"/><rect x="82" y="62" width="169" height="12" rx="6" class="mint"/>
+    <rect class="panel" width="728" height="92" rx="18" stroke="#ff5a67" stroke-width="2"/>
+    <text class="danger phase" x="22" y="40">L3</text><text class="danger phase" x="82" y="40">18,1 A</text><text class="danger label" x="675" y="40">72 %</text>
+    <rect x="82" y="62" width="624" height="12" rx="6" fill="#20354a"/><rect x="82" y="62" width="452" height="12" rx="6" class="danger"/>
   </g>
-  <text class="muted small" x="1200" y="454" text-anchor="middle">Automatisk fasvy över 50 % • huvudsäkring 25 A</text>
+  <text class="muted small" x="1200" y="454" text-anchor="middle">Grönt till 10 A • orange till 17,5 A • rött över 17,5 A</text>
 </svg>

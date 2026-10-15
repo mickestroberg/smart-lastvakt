@@ -8,9 +8,14 @@ menu "Example Configuration"
             help
                 Used to convert current into phase load percentage.
 
-        config LASTVAKT_ALERT_PERCENT
-            int "Open phase view at load (%)"
-            default 50
+        config LASTVAKT_ORANGE_PERCENT
+            int "Start orange zone at load (%)"
+            default 40
+            range 10 100
+
+        config LASTVAKT_RED_PERCENT
+            int "Start red zone and open phase view above load (%)"
+            default 70
             range 10 100
 
         config LASTVAKT_ALERT_HOLD_SECONDS
