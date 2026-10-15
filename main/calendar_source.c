@@ -243,78 +243,10 @@ static time_t event_duration(const parsed_event_t *event)
                : (event->all_day ? 24 * 60 * 60 : 60 * 60);
 }
 
-static bool next_recurrence(
-    const parsed_event_t *event,
-    const recurrence_rule_t *rule,
-    time_t now,
-    time_t *result)
-{
-    if (rule->frequency == RECUR_NONE) {
-        return false;
-    }
-
-    struct tm start_local = {0};
-    struct tm now_local = {0};
-    localtime_r(&event->start, &start_local);
-    localtime_r(&now, &now_local);
-    const int64_t start_day_number = days_from_civil(
-        start_local.tm_year + 1900,
-        (unsigned)(start_local.tm_mon + 1),
-        (unsigned)start_local.tm_mday);
-
-    struct tm day = start_local;
-    day.tm_hour = 0;
-    day.tm_min = 0;
-    day.tm_sec = 0;
-    day.tm_isdst = -1;
-    mktime(&day);
-
-    const time_t duration = event_duration(event);
-    int occurrence_count = 0;
-    const int final_year = now_local.tm_year + 1900 + 5;
-
-    while (day.tm_year + 1900 <= final_year) {
-        const int64_t day_number = days_from_civil(
-            day.tm_year + 1900,
-            (unsigned)(day.tm_mon + 1),
-            (unsigned)day.tm_mday);
-        const int days_since_start = (int)(day_number - start_day_number);
-
-        if (days_since_start >= 0 && recurrence_matches(&day, &start_local, days_since_start, rule)) {
-            struct tm occurrence_local = day;
-            occurrence_local.tm_hour = start_local.tm_hour;
-            occurrence_local.tm_min = start_local.tm_min;
-            occurrence_local.tm_sec = start_local.tm_sec;
-            occurrence_local.tm_isdst = -1;
-            const time_t occurrence = mktime(&occurrence_local);
-
-            if (occurrence >= event->start) {
-                ++occurrence_count;
-                if (rule->count > 0 && occurrence_count > rule->count) return false;
-                if (rule->until > 0 && occurrence > rule->until) return false;
-                if (occurrence + duration > now) {
-                    *result = occurrence;
-                    return true;
-                }
-            }
-        }
-
-        ++day.tm_mday;
-        day.tm_isdst = -1;
-        mktime(&day);
-    }
-    return false;
-}
-
 static bool event_candidate(const parsed_event_t *event, time_t now, time_t *candidate)
 {
     if (!event->has_start || event->cancelled || event->title[0] == '\0') {
         return false;
-    }
-
-    if (event->rule[0] != '\0') {
-        const recurrence_rule_t rule = parse_rule(event->rule);
-        return next_recurrence(event, &rule, now, candidate);
     }
 
     const time_t end = event->start + event_duration(event);
@@ -360,6 +292,71 @@ static void insert_event(
     *count = new_count;
 }
 
+static void insert_recurrences(
+    calendar_event_t *events,
+    size_t capacity,
+    size_t *count,
+    const parsed_event_t *event,
+    const recurrence_rule_t *rule,
+    time_t now)
+{
+    if (rule->frequency == RECUR_NONE) {
+        return;
+    }
+
+    struct tm start_local = {0};
+    struct tm now_local = {0};
+    localtime_r(&event->start, &start_local);
+    localtime_r(&now, &now_local);
+    const int64_t start_day_number = days_from_civil(
+        start_local.tm_year + 1900,
+        (unsigned)(start_local.tm_mon + 1),
+        (unsigned)start_local.tm_mday);
+
+    struct tm day = start_local;
+    day.tm_hour = 0;
+    day.tm_min = 0;
+    day.tm_sec = 0;
+    day.tm_isdst = -1;
+    mktime(&day);
+
+    const time_t duration = event_duration(event);
+    int occurrence_count = 0;
+    size_t inserted = 0;
+    const int final_year = now_local.tm_year + 1900 + 5;
+
+    while (day.tm_year + 1900 <= final_year && inserted < capacity) {
+        const int64_t day_number = days_from_civil(
+            day.tm_year + 1900,
+            (unsigned)(day.tm_mon + 1),
+            (unsigned)day.tm_mday);
+        const int days_since_start = (int)(day_number - start_day_number);
+
+        if (days_since_start >= 0 && recurrence_matches(&day, &start_local, days_since_start, rule)) {
+            struct tm occurrence_local = day;
+            occurrence_local.tm_hour = start_local.tm_hour;
+            occurrence_local.tm_min = start_local.tm_min;
+            occurrence_local.tm_sec = start_local.tm_sec;
+            occurrence_local.tm_isdst = -1;
+            const time_t occurrence = mktime(&occurrence_local);
+
+            if (occurrence >= event->start) {
+                ++occurrence_count;
+                if (rule->count > 0 && occurrence_count > rule->count) break;
+                if (rule->until > 0 && occurrence > rule->until) break;
+                if (occurrence + duration > now) {
+                    insert_event(events, capacity, count, event, occurrence);
+                    ++inserted;
+                }
+            }
+        }
+
+        ++day.tm_mday;
+        day.tm_isdst = -1;
+        mktime(&day);
+    }
+}
+
 static size_t parse_calendar(char *text, calendar_event_t *events, size_t capacity)
 {
     unfold_ics(text);
@@ -381,15 +378,7 @@ static size_t parse_calendar(char *text, calendar_event_t *events, size_t capaci
         if (strcmp(line, "END:VEVENT") == 0) {
             if (capacity > 0 && event.rule[0] != '\0') {
                 const recurrence_rule_t rule = parse_rule(event.rule);
-                time_t cursor = now;
-                for (size_t occurrence = 0; occurrence < capacity; ++occurrence) {
-                    time_t candidate = 0;
-                    if (!next_recurrence(&event, &rule, cursor, &candidate)) {
-                        break;
-                    }
-                    insert_event(events, capacity, &count, &event, candidate);
-                    cursor = candidate + event_duration(&event);
-                }
+                insert_recurrences(events, capacity, &count, &event, &rule, now);
             } else {
                 time_t candidate = 0;
                 if (capacity > 0 && event_candidate(&event, now, &candidate)) {
