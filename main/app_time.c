@@ -181,15 +181,14 @@ static void wifi_time_task(void *arg)
     if (network_setup_wait_connected(portMAX_DELAY)) {
         esp_sntp_config_t sntp_config = ESP_NETIF_SNTP_DEFAULT_CONFIG("se.pool.ntp.org");
         esp_netif_sntp_init(&sntp_config);
-        esp_err_t err = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(15000));
-        if (err == ESP_OK) {
-            rtc_write_local_time();
-            s_time_source = TIME_SOURCE_NTP;
-            ESP_LOGI(TAG, "Swedish local time synchronized with NTP");
-        } else {
+        while (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(15000)) != ESP_OK) {
             s_time_source = TIME_SOURCE_NETWORK_ERROR;
-            ESP_LOGW(TAG, "NTP synchronization timed out");
+            ESP_LOGW(TAG, "NTP synchronization timed out; retrying in 60 seconds");
+            vTaskDelay(pdMS_TO_TICKS(60000));
         }
+        rtc_write_local_time();
+        s_time_source = TIME_SOURCE_NTP;
+        ESP_LOGI(TAG, "Swedish local time synchronized with NTP");
     } else {
         s_time_source = TIME_SOURCE_NETWORK_ERROR;
         ESP_LOGW(TAG, "Wi-Fi connection failed or timed out");
@@ -231,15 +230,15 @@ const char *app_time_status_text(void)
 {
     switch (s_time_source) {
         case TIME_SOURCE_RTC:
-            return "RTC • svensk tid";
+            return "RTC • väntar på NTP";
         case TIME_SOURCE_CONNECTING:
             return "Synkar tid…";
         case TIME_SOURCE_NTP:
-            return "NTP • svensk tid";
+            return "NTP synkat • svensk tid";
         case TIME_SOURCE_NETWORK_ERROR:
-            return "Offline • RTC";
+            return "NTP väntar på nytt försök • RTC";
         case TIME_SOURCE_BUILD:
         default:
-            return "Offline • byggtid";
+            return "RTC saknas • använder byggtid";
     }
 }

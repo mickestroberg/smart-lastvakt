@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "esp_timer.h"
 #include "lvgl.h"
@@ -33,12 +34,12 @@ typedef struct {
     lv_obj_t *clock_view;
     lv_obj_t *phase_view;
     lv_obj_t *calendar_view;
+    lv_obj_t *status_view;
     lv_obj_t *clock_large;
     lv_obj_t *clock_small;
     lv_obj_t *calendar_clock;
+    lv_obj_t *status_clock;
     lv_obj_t *date;
-    lv_obj_t *time_status;
-    lv_obj_t *network_status;
     lv_obj_t *calendar_event;
     lv_obj_t *source_badge;
     lv_obj_t *source_badge_label;
@@ -56,6 +57,13 @@ typedef struct {
     lv_obj_t *calendar_row[CALENDAR_EVENT_LIMIT];
     lv_obj_t *calendar_when[CALENDAR_EVENT_LIMIT];
     lv_obj_t *calendar_title[CALENDAR_EVENT_LIMIT];
+    lv_obj_t *status_network;
+    lv_obj_t *status_time;
+    lv_obj_t *status_tibber;
+    lv_obj_t *status_calendar;
+    lv_obj_t *status_setup_url;
+    lv_obj_t *status_qr;
+    char qr_url[40];
     bool phase_visible;
     int64_t last_over_threshold_ms;
     int64_t manual_phase_until_ms;
@@ -193,10 +201,12 @@ static void show_phase_view(bool show)
     if (show) {
         lv_obj_add_flag(s_ui.clock_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_ui.calendar_view, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_ui.status_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(s_ui.phase_view, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(s_ui.phase_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_ui.calendar_view, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_ui.status_view, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(s_ui.clock_view, LV_OBJ_FLAG_HIDDEN);
     }
 }
@@ -207,7 +217,18 @@ static void show_calendar_view(void)
     s_ui.manual_phase_until_ms = 0;
     lv_obj_add_flag(s_ui.clock_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_ui.phase_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.status_view, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(s_ui.calendar_view, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void show_status_view(void)
+{
+    s_ui.phase_visible = false;
+    s_ui.manual_phase_until_ms = 0;
+    lv_obj_add_flag(s_ui.clock_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.phase_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.calendar_view, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_ui.status_view, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void view_button_event(lv_event_t *event)
@@ -235,6 +256,18 @@ static void calendar_back_event(lv_event_t *event)
     show_phase_view(false);
 }
 
+static void status_panel_event(lv_event_t *event)
+{
+    (void)event;
+    show_status_view();
+}
+
+static void status_back_event(lv_event_t *event)
+{
+    (void)event;
+    show_phase_view(false);
+}
+
 static void create_clock_view(lv_obj_t *root)
 {
     s_ui.clock_view = lv_obj_create(root);
@@ -245,6 +278,9 @@ static void create_clock_view(lv_obj_t *root)
     lv_obj_t *eyebrow = make_label(s_ui.clock_view, &lv_font_lastvakt_16, COLOR_CYAN);
     lv_label_set_text(eyebrow, "SMART LASTVAKT");
     lv_obj_align(eyebrow, LV_ALIGN_TOP_LEFT, 36, 28);
+    lv_obj_add_flag(eyebrow, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(eyebrow, 14);
+    lv_obj_add_event_cb(eyebrow, status_panel_event, LV_EVENT_CLICKED, NULL);
 
     s_ui.source_badge = lv_obj_create(s_ui.clock_view);
     lv_obj_set_size(s_ui.source_badge, 128, 34);
@@ -262,17 +298,9 @@ static void create_clock_view(lv_obj_t *root)
     lv_label_set_text(s_ui.date, "Svensk tid");
     lv_obj_align(s_ui.date, LV_ALIGN_TOP_MID, 0, 190);
 
-    s_ui.time_status = make_label(s_ui.clock_view, &lv_font_lastvakt_12, COLOR_MUTED);
-    lv_label_set_text(s_ui.time_status, "Offline");
-    lv_obj_align(s_ui.time_status, LV_ALIGN_TOP_MID, 0, 232);
-
-    s_ui.network_status = make_label(s_ui.clock_view, &lv_font_lastvakt_12, COLOR_MUTED);
-    lv_label_set_text(s_ui.network_status, "Startar nätverk…");
-    lv_obj_align(s_ui.network_status, LV_ALIGN_TOP_MID, 0, 255);
-
     lv_obj_t *calendar_panel = lv_obj_create(s_ui.clock_view);
     lv_obj_set_size(calendar_panel, 728, 44);
-    lv_obj_set_pos(calendar_panel, 36, 274);
+    lv_obj_set_pos(calendar_panel, 36, 260);
     style_panel(calendar_panel, COLOR_PANEL_LIGHT, 14);
     lv_obj_add_flag(calendar_panel, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_bg_color(calendar_panel, lv_color_hex(COLOR_PANEL), LV_STATE_PRESSED);
@@ -458,6 +486,81 @@ static void create_calendar_view(lv_obj_t *root)
     lv_obj_align(s_ui.calendar_empty, LV_ALIGN_CENTER, 0, 20);
 }
 
+static lv_obj_t *create_status_row(lv_obj_t *parent, int y, const char *caption)
+{
+    lv_obj_t *row = lv_obj_create(parent);
+    lv_obj_set_size(row, 480, 64);
+    lv_obj_set_pos(row, 36, y);
+    style_panel(row, COLOR_PANEL, 14);
+
+    lv_obj_t *label = make_label(row, &lv_font_lastvakt_12, COLOR_CYAN);
+    lv_label_set_text(label, caption);
+    lv_obj_align(label, LV_ALIGN_TOP_LEFT, 18, 10);
+
+    lv_obj_t *value = make_label(row, &lv_font_lastvakt_16, COLOR_TEXT);
+    lv_obj_set_width(value, 444);
+    lv_label_set_long_mode(value, LV_LABEL_LONG_DOT);
+    lv_label_set_text(value, "Startar…");
+    lv_obj_align(value, LV_ALIGN_BOTTOM_LEFT, 18, -9);
+    return value;
+}
+
+static void create_status_view(lv_obj_t *root)
+{
+    s_ui.status_view = lv_obj_create(root);
+    lv_obj_set_size(s_ui.status_view, 800, 480);
+    lv_obj_center(s_ui.status_view);
+    style_panel(s_ui.status_view, COLOR_BG, 0);
+
+    lv_obj_t *title = make_label(s_ui.status_view, &lv_font_lastvakt_24, COLOR_TEXT);
+    lv_label_set_text(title, "Systemstatus");
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 36, 18);
+
+    lv_obj_t *subtitle = make_label(s_ui.status_view, &lv_font_lastvakt_12, COLOR_MUTED);
+    lv_label_set_text(subtitle, "Anslutningar och tidskälla");
+    lv_obj_align(subtitle, LV_ALIGN_TOP_LEFT, 36, 52);
+
+    s_ui.status_clock = make_label(s_ui.status_view, &lv_font_lastvakt_24, COLOR_TEXT);
+    lv_label_set_text(s_ui.status_clock, "--:--");
+    lv_obj_align(s_ui.status_clock, LV_ALIGN_TOP_RIGHT, -178, 24);
+
+    lv_obj_t *button = make_button(s_ui.status_view, "Tillbaka", status_back_event);
+    lv_obj_align(button, LV_ALIGN_TOP_RIGHT, -36, 14);
+
+    s_ui.status_network = create_status_row(s_ui.status_view, 88, "NÄTVERK OCH INSTÄLLNINGAR");
+    s_ui.status_time = create_status_row(s_ui.status_view, 160, "KLOCKANS TIDSKÄLLA");
+    s_ui.status_tibber = create_status_row(s_ui.status_view, 232, "TIBBER PULSE");
+    s_ui.status_calendar = create_status_row(s_ui.status_view, 304, "FAMILJEKALENDER");
+
+    lv_obj_t *qr_caption = make_label(s_ui.status_view, &lv_font_lastvakt_12, COLOR_CYAN);
+    lv_label_set_text(qr_caption, "ÖPPNA INSTÄLLNINGAR");
+    lv_obj_align(qr_caption, LV_ALIGN_TOP_RIGHT, -50, 91);
+
+    lv_obj_t *qr_panel = lv_obj_create(s_ui.status_view);
+    lv_obj_set_size(qr_panel, 214, 214);
+    lv_obj_set_pos(qr_panel, 550, 116);
+    style_panel(qr_panel, 0xFFFFFF, 12);
+
+    s_ui.status_qr = lv_qrcode_create(qr_panel, 190, lv_color_hex(0x07111F), lv_color_hex(0xFFFFFF));
+    lv_obj_center(s_ui.status_qr);
+    const char *setup_url = network_setup_url();
+    lv_qrcode_update(s_ui.status_qr, setup_url, strlen(setup_url));
+    snprintf(s_ui.qr_url, sizeof(s_ui.qr_url), "%s", setup_url);
+
+    s_ui.status_setup_url = make_label(s_ui.status_view, &lv_font_lastvakt_12, COLOR_TEXT);
+    lv_obj_set_width(s_ui.status_setup_url, 224);
+    lv_label_set_long_mode(s_ui.status_setup_url, LV_LABEL_LONG_DOT);
+    lv_label_set_text(s_ui.status_setup_url, setup_url);
+    lv_obj_set_style_text_align(s_ui.status_setup_url, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_pos(s_ui.status_setup_url, 545, 343);
+
+    lv_obj_t *qr_hint = make_label(s_ui.status_view, &lv_font_lastvakt_12, COLOR_MUTED);
+    lv_obj_set_width(qr_hint, 224);
+    lv_label_set_text(qr_hint, "Mobilen måste vara på samma nätverk");
+    lv_obj_set_style_text_align(qr_hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_pos(qr_hint, 545, 372);
+}
+
 static int highest_phase(const phase_sample_t *sample)
 {
     int highest = 0;
@@ -478,9 +581,23 @@ static void ui_timer(lv_timer_t *timer)
     lv_label_set_text(s_ui.clock_large, clock_text);
     lv_label_set_text(s_ui.clock_small, clock_text);
     lv_label_set_text(s_ui.calendar_clock, clock_text);
+    lv_label_set_text(s_ui.status_clock, clock_text);
     lv_label_set_text(s_ui.date, date_text);
-    lv_label_set_text(s_ui.time_status, app_time_status_text());
-    lv_label_set_text(s_ui.network_status, network_setup_status_text());
+
+    lv_label_set_text(s_ui.status_network, network_setup_status_text());
+    lv_obj_set_style_text_color(
+        s_ui.status_network,
+        lv_color_hex(network_setup_is_connected() ? COLOR_MINT : COLOR_WARNING),
+        LV_PART_MAIN);
+    lv_label_set_text(s_ui.status_time, app_time_status_text());
+
+    const char *setup_url = network_setup_url();
+    if (strcmp(setup_url, s_ui.qr_url) != 0) {
+        if (lv_qrcode_update(s_ui.status_qr, setup_url, strlen(setup_url)) == LV_RES_OK) {
+            snprintf(s_ui.qr_url, sizeof(s_ui.qr_url), "%s", setup_url);
+        }
+        lv_label_set_text(s_ui.status_setup_url, setup_url);
+    }
 
     calendar_event_t calendar_events[CALENDAR_EVENT_LIMIT] = {0};
     size_t calendar_event_count = 0;
@@ -539,12 +656,27 @@ static void ui_timer(lv_timer_t *timer)
         lv_color_hex(calendar_state == CALENDAR_SOURCE_ERROR ? COLOR_WARNING : COLOR_MUTED),
         LV_PART_MAIN);
 
+    const char *status_calendar = "Kalendern är ansluten";
+    if (calendar_state == CALENDAR_SOURCE_SYNCING) status_calendar = "Hämtar kalenderhändelser…";
+    else if (calendar_state == CALENDAR_SOURCE_ERROR) status_calendar = "Kalendern kunde inte hämtas";
+    else if (calendar_state == CALENDAR_SOURCE_DISABLED) status_calendar = "Kalendern är inte konfigurerad";
+    lv_label_set_text(s_ui.status_calendar, status_calendar);
+    lv_obj_set_style_text_color(
+        s_ui.status_calendar,
+        lv_color_hex(calendar_state == CALENDAR_SOURCE_READY ? COLOR_MINT : COLOR_WARNING),
+        LV_PART_MAIN);
+
     phase_sample_t sample = phase_source_read();
     lv_label_set_text(s_ui.source_badge_label, sample.simulated ? "SIMULERING" : "TIBBER LIVE");
     lv_label_set_text(s_ui.phase_source_status, phase_source_status_text());
     lv_obj_set_style_bg_color(s_ui.source_badge, lv_color_hex(sample.simulated ? 0x392814 : 0x12392E), LV_PART_MAIN);
     lv_obj_set_style_text_color(s_ui.source_badge_label, lv_color_hex(sample.simulated ? COLOR_WARNING : COLOR_MINT), LV_PART_MAIN);
     lv_obj_set_style_text_color(s_ui.phase_source_status, lv_color_hex(sample.simulated ? COLOR_WARNING : COLOR_MINT), LV_PART_MAIN);
+    lv_label_set_text(s_ui.status_tibber, phase_source_status_text());
+    lv_obj_set_style_text_color(
+        s_ui.status_tibber,
+        lv_color_hex(sample.simulated ? COLOR_WARNING : COLOR_MINT),
+        LV_PART_MAIN);
     const int highest = highest_phase(&sample);
     const load_zone_t highest_zone = load_zone_for_current(sample.current_a[highest], sample.main_fuse_a);
     const int64_t now_ms = esp_timer_get_time() / 1000;
@@ -615,6 +747,7 @@ void ui_create(void)
     create_clock_view(root);
     create_phase_view(root);
     create_calendar_view(root);
+    create_status_view(root);
     show_phase_view(false);
 
     lv_timer_t *timer = lv_timer_create(ui_timer, 250, NULL);

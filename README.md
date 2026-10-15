@@ -10,6 +10,7 @@ Standardvärdet för huvudsäkringen är **25 A**.
 
 - Extra stor klocka, svenskt datum och automatisk CET/CEST.
 - Kortets batteribackade PCF85063A används vid start; NTP rättar tiden efter Wi-Fi-anslutning.
+- Tryck på **SMART LASTVAKT** för en ren systemstatussida med Wi-Fi, tidskälla, Tibber, kalender och en QR-kod till enhetens lokala installationssida.
 - Nästa händelse från familjens privata Google-kalender visas direkt på klockvyn. Tryck på kalenderfältet för en egen sida med de sex närmaste händelserna.
 - Kalendern uppdateras var 15:e minut och vanliga dagliga, veckovisa, månatliga och årliga upprepningar stöds.
 - Tibber GraphQL-abonnemang med `currentL1`, `currentL2` och `currentL3` i realtid.
@@ -33,7 +34,7 @@ Kalendern läses skrivskyddat via Googles hemliga iCal-adress. Adressen lagras e
 3. Fyll i Wi-Fi-namn, Wi-Fi-lösenord, din Tibber Personal Access Token och kalenderns **Hemliga adress i iCal-format** från Google Kalender.
 4. Tryck **Spara och starta om**.
 
-Efter en lyckad anslutning visar displayen adressen där samma installationssida kan nås på det lokala nätverket. Om Wi-Fi-anslutningen misslyckas startas installationsnätverket igen.
+Efter en lyckad anslutning finns adressen och en skanningsbar QR-kod på systemstatussidan. Tryck på **SMART LASTVAKT** på huvudvyn för att öppna den. Mobilen måste vara ansluten till samma lokala nätverk. Om Wi-Fi-anslutningen misslyckas startas installationsnätverket igen.
 
 En personlig token kan skapas på [Tibber Developer](https://developer.tibber.com/). Firmware väljer automatiskt det första hem där realtidsmätning är aktiverad och sparar hem-id lokalt.
 

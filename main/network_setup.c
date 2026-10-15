@@ -34,6 +34,7 @@ static network_state_t s_state = NET_STARTING;
 static int s_retries;
 static bool s_ap_started;
 static char s_address[64] = "Startar nätverk…";
+static char s_url[40] = "http://192.168.4.1";
 
 static const char SETUP_HTML[] =
     "<!doctype html><html lang='sv'><head><meta charset='utf-8'>"
@@ -76,6 +77,7 @@ static void start_setup_ap(void)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap));
     s_ap_started = true;
     s_state = NET_SETUP_AP;
+    snprintf(s_url, sizeof(s_url), "http://192.168.4.1");
     snprintf(s_address, sizeof(s_address), "%s • 192.168.4.1", (char *)ap.ap.ssid);
     ESP_LOGI(TAG, "Setup network ready: %s", s_address);
 }
@@ -98,6 +100,7 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         const ip_event_got_ip_t *event = data;
         s_retries = 0;
         s_state = NET_CONNECTED;
+        snprintf(s_url, sizeof(s_url), "http://" IPSTR, IP2STR(&event->ip_info.ip));
         snprintf(s_address, sizeof(s_address), "Inställningar: http://" IPSTR, IP2STR(&event->ip_info.ip));
         xEventGroupSetBits(s_events, CONNECTED_BIT);
         ESP_LOGI(TAG, "Wi-Fi connected; %s", s_address);
@@ -288,4 +291,9 @@ const char *network_setup_status_text(void)
 const char *network_setup_address_text(void)
 {
     return s_address;
+}
+
+const char *network_setup_url(void)
+{
+    return s_url;
 }

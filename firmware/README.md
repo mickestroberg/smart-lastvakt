@@ -1,6 +1,6 @@
 # Färdig firmware
 
-Denna uppsättning byggdes med ESP-IDF 5.5.5 och provades på Waveshare ESP32-S3-Touch-LCD-4.3B-BOX med svensk tid, Tibber Pulse och en tryckbar översikt över de sex närmaste händelserna från privat Google-iCal.
+Denna uppsättning byggdes med ESP-IDF 5.5.5 och provades på Waveshare ESP32-S3-Touch-LCD-4.3B-BOX med svensk tid, Tibber Pulse och en tryckbar översikt över de sex närmaste händelserna från privat Google-iCal. Tryck på **SMART LASTVAKT** för systemstatus och en QR-kod till den lokala installationssidan.
 
 - `bootloader.bin` → `0x0000`
 - `partition-table.bin` → `0x8000`
