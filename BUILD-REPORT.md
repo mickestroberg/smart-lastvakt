@@ -28,7 +28,14 @@ Startloggen bekräftade:
 - DHCP och installationssida på `192.168.4.1`;
 - startad klocka, installationssida och Tibber-fasvy utan omstart eller panik.
 
-Riktig Tibber-data kan verifieras först när användaren har matat in Wi-Fi och en personlig Tibber-token. Fram till dess visar displayen simulerade fasvärden.
+Efter nätverkskonfiguration verifierades även:
+
+- återanslutning till sparat Wi-Fi och svensk tid via NTP;
+- godkänd Tibber-token och hämtning av ett hem med realtidsmätning;
+- validerad TLS-kedja för både Tibber API och live-webbsocket;
+- startad live-webbsocket utan återanslutningsfel under kontrollperioden.
+
+TLS-arbetsminnet placeras i kortets PSRAM så att certifikatkedjan kan verifieras utan att det interna RAM-minnet tar slut. Om Tibber Pulse tillfälligt saknar data fortsätter vyn med simulerade värden och försöker återansluta automatiskt.
 
 ## Fabriksbackup
 
@@ -44,6 +51,6 @@ Backupen hålls utanför Git-förrådet eftersom den kan innehålla kortspecifik
 
 | Fil | Flashoffset | Storlek | SHA-256 |
 |---|---:|---:|---|
-| `bootloader.bin` | `0x0000` | 22 288 byte | `F7F368AE3AB1A69656FC47A15C656A9EAA475F79615E2457BDF796D3CC886481` |
+| `bootloader.bin` | `0x0000` | 22 288 byte | `381F63F3142217E7CE4A87A524B81F72F197321A859B259263961399BBE0AADD` |
 | `partition-table.bin` | `0x8000` | 3 072 byte | `776239783A4A8CE1386FE68450F1D70759738C7269D8A8290837F45BC397D4A7` |
-| `lastvakt_display.bin` | `0x10000` | 1 472 256 byte | `B7C6F408784061211B674E62BB6A65B5F63EE54E3B35BCCB1400982F93390526` |
+| `lastvakt_display.bin` | `0x10000` | 1 472 256 byte | `63BEFC4AA731F3AE598CD7A3A205617C7386091868387AE43FC46D8DA4CB0358` |
