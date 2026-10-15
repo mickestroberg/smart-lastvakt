@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 48 px
  * Bpp: 4
- * Opts: --size 48 --bpp 4 --format lvgl --font C:\Users\hp\Documents\Codex\2026-10-15\referenced-chatgpt-conversation-this-is-an\work\waveshare-reference\examples\ESP-IDF\05_IO_Test\components\lvgl__lvgl\scripts\built_in_font\Montserrat-Medium.ttf -r 0x20-0x7F,0x00C4-0x00C5,0x00D6,0x00E4-0x00E5,0x00F6,0x2022 --no-compress --lv-font-name lv_font_lastvakt_48 -o main\fonts\lv_font_lastvakt_48.c
+ * Opts: --size 48 --bpp 4 --format lvgl --font C:\Users\hp\Documents\Codex\2026-10-15\referenced-chatgpt-conversation-this-is-an\work\waveshare-reference\examples\ESP-IDF\05_IO_Test\components\lvgl__lvgl\scripts\built_in_font\Montserrat-Medium.ttf -r 0x20-0x7F,0x00C4-0x00C5,0x00D6,0x00E4-0x00E5,0x00F6,0x2022,0x2026 --no-compress --lv-font-name lv_font_lastvakt_48 -o main\fonts\lv_font_lastvakt_48.c
  ******************************************************************************/
 
 #include "lvgl.h"
@@ -5246,7 +5246,22 @@ static LV_ATTRIBUTE_LARGE_CONST const uint8_t glyph_bitmap[] = {
     0xff, 0xfb, 0xcf, 0xff, 0xff, 0xff, 0xdb, 0xff,
     0xff, 0xff, 0xfb, 0x6f, 0xff, 0xff, 0xff, 0x60,
     0xbf, 0xff, 0xff, 0xb0, 0x0, 0x7d, 0xfd, 0x80,
-    0x0
+    0x0,
+
+    /* U+2026 "…" */
+    0x0, 0x79, 0x70, 0x0, 0x0, 0x0, 0x6, 0x97,
+    0x10, 0x0, 0x0, 0x0, 0x59, 0x82, 0x1, 0xdf,
+    0xff, 0xd0, 0x0, 0x0, 0xc, 0xff, 0xfe, 0x10,
+    0x0, 0x0, 0xaf, 0xff, 0xf2, 0x8f, 0xff, 0xff,
+    0x60, 0x0, 0x6, 0xff, 0xff, 0xf8, 0x0, 0x0,
+    0x4f, 0xff, 0xff, 0xab, 0xff, 0xff, 0xf9, 0x0,
+    0x0, 0x9f, 0xff, 0xff, 0xb0, 0x0, 0x7, 0xff,
+    0xff, 0xfd, 0xaf, 0xff, 0xff, 0x70, 0x0, 0x8,
+    0xff, 0xff, 0xfa, 0x0, 0x0, 0x5f, 0xff, 0xff,
+    0xc3, 0xff, 0xff, 0xf1, 0x0, 0x0, 0x1f, 0xff,
+    0xff, 0x30, 0x0, 0x0, 0xef, 0xff, 0xf5, 0x4,
+    0xcf, 0xc3, 0x0, 0x0, 0x0, 0x3c, 0xfd, 0x40,
+    0x0, 0x0, 0x2, 0xbf, 0xd6, 0x0
 };
 
 
@@ -5357,7 +5372,8 @@ static const lv_font_fmt_txt_glyph_dsc_t glyph_dsc[] = {
     {.bitmap_index = 38441, .adv_w = 459, .box_w = 23, .box_h = 36, .ofs_x = 2, .ofs_y = 0},
     {.bitmap_index = 38855, .adv_w = 459, .box_w = 23, .box_h = 40, .ofs_x = 2, .ofs_y = 0},
     {.bitmap_index = 39315, .adv_w = 488, .box_w = 27, .box_h = 36, .ofs_x = 2, .ofs_y = 0},
-    {.bitmap_index = 39801, .adv_w = 241, .box_w = 9, .box_h = 9, .ofs_x = 3, .ofs_y = 9}
+    {.bitmap_index = 39801, .adv_w = 241, .box_w = 9, .box_h = 9, .ofs_x = 3, .ofs_y = 9},
+    {.bitmap_index = 39842, .adv_w = 531, .box_w = 29, .box_h = 7, .ofs_x = 2, .ofs_y = 0}
 };
 
 /*---------------------
@@ -5365,7 +5381,7 @@ static const lv_font_fmt_txt_glyph_dsc_t glyph_dsc[] = {
  *--------------------*/
 
 static const uint16_t unicode_list_1[] = {
-    0x0, 0x1, 0x12, 0x20, 0x21, 0x32, 0x1f5e
+    0x0, 0x1, 0x12, 0x20, 0x21, 0x32, 0x1f5e, 0x1f62
 };
 
 /*Collect the unicode lists and glyph_id offsets*/
@@ -5376,8 +5392,8 @@ static const lv_font_fmt_txt_cmap_t cmaps[] =
         .unicode_list = NULL, .glyph_id_ofs_list = NULL, .list_length = 0, .type = LV_FONT_FMT_TXT_CMAP_FORMAT0_TINY
     },
     {
-        .range_start = 196, .range_length = 8031, .glyph_id_start = 96,
-        .unicode_list = unicode_list_1, .glyph_id_ofs_list = NULL, .list_length = 7, .type = LV_FONT_FMT_TXT_CMAP_SPARSE_TINY
+        .range_start = 196, .range_length = 8035, .glyph_id_start = 96,
+        .unicode_list = unicode_list_1, .glyph_id_ofs_list = NULL, .list_length = 8, .type = LV_FONT_FMT_TXT_CMAP_SPARSE_TINY
     }
 };
 
@@ -5401,7 +5417,7 @@ static const uint8_t kern_left_class_mapping[] =
     51, 45, 52, 52, 53, 48, 45, 45,
     46, 46, 54, 55, 56, 57, 51, 58,
     58, 59, 58, 60, 41, 0, 0, 9,
-    23, 23, 22, 45, 45, 46, 9
+    23, 23, 22, 45, 45, 46, 9, 10
 };
 
 /*Map glyph_ids to kern right classes*/
@@ -5419,7 +5435,7 @@ static const uint8_t kern_right_class_mapping[] =
     39, 38, 40, 41, 38, 38, 42, 42,
     39, 42, 39, 42, 43, 44, 45, 46,
     46, 47, 46, 48, 0, 0, 35, 9,
-    24, 24, 23, 37, 37, 39, 9
+    24, 24, 23, 37, 37, 39, 9, 10
 };
 
 /*Kern values between classes*/

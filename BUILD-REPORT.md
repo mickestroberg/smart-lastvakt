@@ -11,9 +11,9 @@ Datum: 2026-10-15
 - LVGL: 8.4.0
 - Flash: 16 MB QIO, 80 MHz
 - PSRAM: 8 MB OPI, 80 MHz
-- Appbild: 1 589 648 byte
+- Appbild: 1 589 760 byte
 - Apppartition: 8 388 608 byte
-- Ledigt i apppartitionen: 6 798 960 byte (81 %)
+- Ledigt i apppartitionen: 6 798 848 byte (81 %)
 
 ESP-IDF-bygget slutfördes utan kompilerings- eller länkfel. Bootloader, partitionstabell och appbild skrevs till kortet och esptool verifierade hashen för samtliga skrivningar.
 
@@ -60,4 +60,4 @@ Backupen hålls utanför Git-förrådet eftersom den kan innehålla kortspecifik
 |---|---:|---:|---|
 | `bootloader.bin` | `0x0000` | 22 288 byte | `381F63F3142217E7CE4A87A524B81F72F197321A859B259263961399BBE0AADD` |
 | `partition-table.bin` | `0x8000` | 3 072 byte | `776239783A4A8CE1386FE68450F1D70759738C7269D8A8290837F45BC397D4A7` |
-| `lastvakt_display.bin` | `0x10000` | 1 589 648 byte | `6947037266A506D61EEE3FAEBC3547AAD257706D7198EBBF673B0C4CE3B4C7CF` |
+| `lastvakt_display.bin` | `0x10000` | 1 589 760 byte | `222079A4DFC8753215CD7D7892DBDA952DA81263C674E18F5FE91CA2C33BA813` |
