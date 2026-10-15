@@ -53,6 +53,7 @@ esp_err_t app_config_load(app_config_t *config)
     if (err == ESP_OK) err = get_string(handle, "tibber", config->tibber_token, sizeof(config->tibber_token));
     if (err == ESP_OK) err = get_string(handle, "home_id", config->tibber_home_id, sizeof(config->tibber_home_id));
     if (err == ESP_OK) err = get_string(handle, "calendar", config->calendar_ical_url, sizeof(config->calendar_ical_url));
+    if (err == ESP_OK) err = get_string(handle, "shelly", config->shelly_host, sizeof(config->shelly_host));
     nvs_close(handle);
     return err;
 }
@@ -70,6 +71,7 @@ esp_err_t app_config_save(const app_config_t *config)
     if (err == ESP_OK) err = nvs_set_str(handle, "tibber", config->tibber_token);
     if (err == ESP_OK) err = nvs_set_str(handle, "home_id", config->tibber_home_id);
     if (err == ESP_OK) err = nvs_set_str(handle, "calendar", config->calendar_ical_url);
+    if (err == ESP_OK) err = nvs_set_str(handle, "shelly", config->shelly_host);
     if (err == ESP_OK) err = nvs_commit(handle);
     nvs_close(handle);
     return err;
@@ -88,6 +90,19 @@ esp_err_t app_config_save_home_id(const char *home_id)
     return err;
 }
 
+esp_err_t app_config_save_shelly_host(const char *host)
+{
+    if (host == NULL || host[0] == '\0' || strlen(host) > LASTVAKT_SHELLY_HOST_MAX) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    nvs_handle_t handle;
+    ESP_RETURN_ON_ERROR(nvs_open(CONFIG_NAMESPACE, NVS_READWRITE, &handle), "app_config", "Could not open NVS");
+    esp_err_t err = nvs_set_str(handle, "shelly", host);
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    return err;
+}
+
 bool app_config_has_wifi(const app_config_t *config)
 {
     return config != NULL && config->ssid[0] != '\0';
@@ -101,4 +116,9 @@ bool app_config_has_tibber(const app_config_t *config)
 bool app_config_has_calendar(const app_config_t *config)
 {
     return config != NULL && config->calendar_ical_url[0] != '\0';
+}
+
+bool app_config_has_shelly(const app_config_t *config)
+{
+    return config != NULL && config->shelly_host[0] != '\0';
 }

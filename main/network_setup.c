@@ -52,6 +52,7 @@ static const char SETUP_HTML[] =
     "<label for='password'>Wi-Fi-lösenord</label><input id='password' name='password' type='password' maxlength='64' placeholder='Lämna tomt för att behålla sparat'>"
     "<label for='token'>Tibber Personal Access Token</label><input id='token' name='token' type='password' maxlength='255' placeholder='Lämna tomt för att behålla sparad token'>"
     "<label for='calendar'>Google Kalender – hemlig adress i iCal-format</label><input id='calendar' name='calendar' type='password' maxlength='255' placeholder='Lämna tomt för att behålla sparad adress'>"
+    "<label for='shelly'>Shelly – IP-adress eller värdnamn</label><input id='shelly' name='shelly' maxlength='95' placeholder='Exempel: 192.168.68.121'>"
     "<button type='submit'>Spara och starta om</button></form>"
     "<small>Tibber-token skapas på developer.tibber.com. Kalenderadressen finns under Google Kalender → Inställningar → Integrera kalender → Hemlig adress i iCal-format.</small>"
     "</main></body></html>";
@@ -193,10 +194,12 @@ static esp_err_t save_post(httpd_req_t *req)
     char password[LASTVAKT_WIFI_PASSWORD_MAX + 1] = {0};
     char token[LASTVAKT_TIBBER_TOKEN_MAX + 1] = {0};
     char calendar[LASTVAKT_CALENDAR_URL_MAX + 1] = {0};
+    char shelly[LASTVAKT_SHELLY_HOST_MAX + 1] = {0};
     form_value(body, "ssid", ssid, sizeof(ssid));
     form_value(body, "password", password, sizeof(password));
     form_value(body, "token", token, sizeof(token));
     form_value(body, "calendar", calendar, sizeof(calendar));
+    form_value(body, "shelly", shelly, sizeof(shelly));
     free(body);
 
     if (err != ESP_OK || ssid[0] == '\0') {
@@ -206,6 +209,7 @@ static esp_err_t save_post(httpd_req_t *req)
     if (password[0] != '\0') snprintf(config.wifi_password, sizeof(config.wifi_password), "%s", password);
     if (token[0] != '\0') snprintf(config.tibber_token, sizeof(config.tibber_token), "%s", token);
     if (calendar[0] != '\0') snprintf(config.calendar_ical_url, sizeof(config.calendar_ical_url), "%s", calendar);
+    if (shelly[0] != '\0') snprintf(config.shelly_host, sizeof(config.shelly_host), "%s", shelly);
     config.tibber_home_id[0] = '\0';
 
     err = app_config_save(&config);
@@ -220,6 +224,36 @@ static esp_err_t save_post(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t shelly_post(httpd_req_t *req)
+{
+    if (req->content_len <= 0 || req->content_len > 256) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Ogiltig Shelly-adress");
+    }
+
+    char body[257] = {0};
+    int received = 0;
+    while (received < req->content_len) {
+        int count = httpd_req_recv(req, body + received, req->content_len - received);
+        if (count <= 0) return ESP_FAIL;
+        received += count;
+    }
+
+    char host[LASTVAKT_SHELLY_HOST_MAX + 1] = {0};
+    if (!form_value(body, "host", host, sizeof(host)) || host[0] == '\0') {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Shelly-adress saknas");
+    }
+    esp_err_t err = app_config_save_shelly_host(host);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Could not save Shelly address: %s", esp_err_to_name(err));
+        return httpd_resp_send_500(req);
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"saved\":true,\"restarting\":true}");
+    xTaskCreate(restart_task, "restart", 2048, NULL, 3, NULL);
+    return ESP_OK;
+}
+
 static esp_err_t start_web_server(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -228,8 +262,10 @@ static esp_err_t start_web_server(void)
     ESP_RETURN_ON_ERROR(httpd_start(&server, &config), TAG, "Could not start setup server");
     const httpd_uri_t page = {.uri = "/", .method = HTTP_GET, .handler = page_get};
     const httpd_uri_t save = {.uri = "/save", .method = HTTP_POST, .handler = save_post};
+    const httpd_uri_t shelly = {.uri = "/shelly", .method = HTTP_POST, .handler = shelly_post};
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(server, &page), TAG, "Could not register page");
-    return httpd_register_uri_handler(server, &save);
+    ESP_RETURN_ON_ERROR(httpd_register_uri_handler(server, &save), TAG, "Could not register save handler");
+    return httpd_register_uri_handler(server, &shelly);
 }
 
 esp_err_t network_setup_start(void)

@@ -6,6 +6,7 @@ idf_component_register(
         "calendar_source.c"
         "network_setup.c"
         "phase_source.c"
+        "shelly_client.c"
         "tibber_client.c"
         "ui.c"
         "weather_source.c"

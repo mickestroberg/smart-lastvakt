@@ -16,6 +16,7 @@
 #include "calendar_source.h"
 #include "network_setup.h"
 #include "phase_source.h"
+#include "shelly_client.h"
 #include "ui.h"
 #include "weather_source.h"
 
@@ -40,6 +41,7 @@ void app_main(void)
     app_time_init();
     ESP_ERROR_CHECK(network_setup_start());
     phase_source_init();
+    ESP_ERROR_CHECK(shelly_client_start());
     calendar_source_init();
     weather_source_init();
 

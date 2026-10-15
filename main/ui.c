@@ -13,6 +13,7 @@
 #include "lastvakt_fonts.h"
 #include "network_setup.h"
 #include "phase_source.h"
+#include "shelly_client.h"
 #include "weather_source.h"
 
 #define COLOR_BG 0x07111F
@@ -58,6 +59,7 @@ typedef struct {
     lv_obj_t *load_panel;
     lv_obj_t *load_status;
     lv_obj_t *load_value;
+    lv_obj_t *microwave_status;
     lv_obj_t *phase_amp[3];
     lv_obj_t *phase_percent[3];
     lv_obj_t *phase_bar[3];
@@ -72,6 +74,7 @@ typedef struct {
     lv_obj_t *status_tibber;
     lv_obj_t *status_calendar;
     lv_obj_t *status_weather;
+    lv_obj_t *status_shelly;
     lv_obj_t *status_setup_url;
     lv_obj_t *status_qr;
     char qr_url[40];
@@ -532,6 +535,10 @@ static void create_clock_view(lv_obj_t *root)
     lv_label_set_text(s_ui.load_status, "Gott om marginal");
     lv_obj_align(s_ui.load_status, LV_ALIGN_TOP_LEFT, 24, 48);
 
+    s_ui.microwave_status = make_label(s_ui.load_panel, &lv_font_lastvakt_12, COLOR_MUTED);
+    lv_label_set_text(s_ui.microwave_status, "MIKRO • Shelly är inte konfigurerad");
+    lv_obj_align(s_ui.microwave_status, LV_ALIGN_TOP_LEFT, 24, 88);
+
     s_ui.load_value = make_label(s_ui.load_panel, &lv_font_lastvakt_24, COLOR_MINT);
     lv_label_set_text(s_ui.load_value, "L1  0,0 A");
     lv_obj_align(s_ui.load_value, LV_ALIGN_RIGHT_MID, -170, 4);
@@ -736,6 +743,11 @@ static void create_status_view(lv_obj_t *root)
     lv_label_set_text(s_ui.status_weather, "Väder: hämtar Älvsjö • Open-Meteo");
     lv_obj_set_pos(s_ui.status_weather, 54, 390);
 
+    s_ui.status_shelly = make_label(s_ui.status_view, &lv_font_lastvakt_12, COLOR_MUTED);
+    lv_obj_set_width(s_ui.status_shelly, 480);
+    lv_label_set_text(s_ui.status_shelly, "Shelly: inte konfigurerad");
+    lv_obj_set_pos(s_ui.status_shelly, 54, 414);
+
     lv_obj_t *qr_caption = make_label(s_ui.status_view, &lv_font_lastvakt_12, COLOR_CYAN);
     lv_label_set_text(qr_caption, "ÖPPNA INSTÄLLNINGAR");
     lv_obj_align(qr_caption, LV_ALIGN_TOP_RIGHT, -50, 91);
@@ -830,6 +842,49 @@ static void ui_timer(lv_timer_t *timer)
         lv_obj_set_style_text_color(s_ui.weather_temperature, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
         lv_obj_set_style_text_color(s_ui.weather_condition, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
         lv_obj_set_style_text_color(s_ui.status_weather, lv_color_hex(COLOR_WARNING), LV_PART_MAIN);
+    }
+
+    shelly_sample_t shelly = {0};
+    const shelly_state_t shelly_state = shelly_client_get(&shelly);
+    if (shelly.available) {
+        char microwave_text[96];
+        snprintf(
+            microwave_text,
+            sizeof(microwave_text),
+            "MIKRO • %s • %.0f W",
+            shelly.output_on ? "PÅ" : "AV",
+            shelly.power_w);
+        lv_label_set_text(s_ui.microwave_status, microwave_text);
+
+        char shelly_status[128];
+        snprintf(
+            shelly_status,
+            sizeof(shelly_status),
+            "Shelly: %s • %.0f W • %.0f V • %.0f C%s",
+            shelly.output_on ? "på" : "av",
+            shelly.power_w,
+            shelly.voltage_v,
+            shelly.temperature_c,
+            shelly_state == SHELLY_STALE ? " • senaste värdet" : "");
+        lv_label_set_text(s_ui.status_shelly, shelly_status);
+        const uint32_t shelly_color =
+            shelly_state == SHELLY_READY ? (shelly.output_on ? COLOR_CYAN : COLOR_MUTED) : COLOR_WARNING;
+        lv_obj_set_style_text_color(s_ui.microwave_status, lv_color_hex(shelly_color), LV_PART_MAIN);
+        lv_obj_set_style_text_color(s_ui.status_shelly, lv_color_hex(shelly_color), LV_PART_MAIN);
+    } else {
+        const char *microwave_text = "MIKRO • Shelly är inte konfigurerad";
+        if (shelly_state == SHELLY_CONNECTING) microwave_text = "MIKRO • ansluter till Shelly…";
+        else if (shelly_state == SHELLY_STALE) microwave_text = "MIKRO • Shelly kan inte nås";
+        lv_label_set_text(s_ui.microwave_status, microwave_text);
+        lv_label_set_text(s_ui.status_shelly, shelly_client_status_text());
+        lv_obj_set_style_text_color(
+            s_ui.microwave_status,
+            lv_color_hex(shelly_state == SHELLY_STALE ? COLOR_WARNING : COLOR_MUTED),
+            LV_PART_MAIN);
+        lv_obj_set_style_text_color(
+            s_ui.status_shelly,
+            lv_color_hex(shelly_state == SHELLY_STALE ? COLOR_WARNING : COLOR_MUTED),
+            LV_PART_MAIN);
     }
 
     lv_label_set_text(s_ui.status_network, network_setup_status_text());
