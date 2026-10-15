@@ -10,17 +10,17 @@ Standardvärdet för huvudsäkringen är **25 A**.
 
 - Extra stor klocka, svenskt datum och automatisk CET/CEST.
 - Kortets batteribackade PCF85063A används vid start; NTP rättar tiden efter Wi-Fi-anslutning.
-- Nästa händelse från familjens privata Google-kalender visas direkt på klockvyn. Kalendern uppdateras var 15:e minut och vanliga dagliga, veckovisa, månatliga och årliga upprepningar stöds.
+- Nästa händelse från familjens privata Google-kalender visas direkt på klockvyn. Tryck på kalenderfältet för en egen sida med de sex närmaste händelserna.
+- Kalendern uppdateras var 15:e minut och vanliga dagliga, veckovisa, månatliga och årliga upprepningar stöds.
 - Tibber GraphQL-abonnemang med `currentL1`, `currentL2` och `currentL3` i realtid.
 - Simulerade fasvärden används automatiskt tills Tibber är konfigurerat eller om liveflödet är tillfälligt nere.
 - Tydliga belastningszoner: grönt till 10 A, orange till 17,5 A och rött över 17,5 A med 25 A huvudsäkring.
 - Automatisk fasvy i röd zon och återgång efter åtta sekunder.
-- Manuell växling mellan klocka och fasvy via pekskärmen.
+- Manuell växling mellan klocka, kalender och fasvy via pekskärmen.
 - Lokal installationssida för SSID, Wi-Fi-lösenord, Tibber Personal Access Token och kalenderns hemliga iCal-adress.
 
 ## Planerade familjefunktioner
 
-- En kalenderöversikt med dagens och de närmaste kommande händelserna.
 - En enkel gemensam inköpslista med möjlighet att lägga till exempelvis ”mjölk” från mobil eller display.
 - Integrera Shelly-pluggen vid mikron för mätning och styrning när installationen kan göras på plats.
 
@@ -75,7 +75,7 @@ De tre färdiga bilderna ligger även i `firmware/` och har följande offset:
 ## Struktur
 
 - `main/network_setup.c` – Wi-Fi, NVS och den lokala installationssidan.
-- `main/calendar_source.c` – hämtar och tolkar nästa kalenderhändelse från privat iCal.
+- `main/calendar_source.c` – hämtar, tolkar och sorterar kommande kalenderhändelser från privat iCal.
 - `main/tibber_client.c` – Tibbers GraphQL- och WebSocket-klient.
 - `main/phase_source.c` – väljer livevärden eller simulering.
 - `main/app_time.c` – RTC, NTP och svensk tidszon.

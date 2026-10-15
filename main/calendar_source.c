@@ -57,7 +57,8 @@ typedef struct {
 static const char *TAG = "calendar_source";
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static calendar_source_state_t s_state = CALENDAR_SOURCE_DISABLED;
-static calendar_event_t s_event;
+static calendar_event_t s_events[CALENDAR_EVENT_LIMIT];
+static size_t s_event_count;
 
 static int64_t days_from_civil(int year, unsigned month, unsigned day)
 {
@@ -235,6 +236,13 @@ static bool recurrence_matches(
     }
 }
 
+static time_t event_duration(const parsed_event_t *event)
+{
+    return event->has_end && event->end > event->start
+               ? event->end - event->start
+               : (event->all_day ? 24 * 60 * 60 : 60 * 60);
+}
+
 static bool next_recurrence(
     const parsed_event_t *event,
     const recurrence_rule_t *rule,
@@ -261,9 +269,7 @@ static bool next_recurrence(
     day.tm_isdst = -1;
     mktime(&day);
 
-    const time_t duration = event->has_end && event->end > event->start
-                                ? event->end - event->start
-                                : (event->all_day ? 24 * 60 * 60 : 60 * 60);
+    const time_t duration = event_duration(event);
     int occurrence_count = 0;
     const int final_year = now_local.tm_year + 1900 + 5;
 
@@ -311,9 +317,7 @@ static bool event_candidate(const parsed_event_t *event, time_t now, time_t *can
         return next_recurrence(event, &rule, now, candidate);
     }
 
-    const time_t end = event->has_end
-                           ? event->end
-                           : event->start + (event->all_day ? 24 * 60 * 60 : 60 * 60);
+    const time_t end = event->start + event_duration(event);
     if (end <= now) {
         return false;
     }
@@ -321,14 +325,48 @@ static bool event_candidate(const parsed_event_t *event, time_t now, time_t *can
     return true;
 }
 
-static bool parse_calendar(char *text, calendar_event_t *next_event)
+static void insert_event(
+    calendar_event_t *events,
+    size_t capacity,
+    size_t *count,
+    const parsed_event_t *event,
+    time_t start)
+{
+    for (size_t i = 0; i < *count; ++i) {
+        if (events[i].start == start && strcmp(events[i].title, event->title) == 0) {
+            return;
+        }
+    }
+
+    size_t position = 0;
+    while (position < *count && events[position].start <= start) {
+        ++position;
+    }
+    if (*count == capacity && position == capacity) {
+        return;
+    }
+
+    const size_t new_count = *count < capacity ? *count + 1 : *count;
+    for (size_t i = new_count - 1; i > position; --i) {
+        events[i] = events[i - 1];
+    }
+
+    events[position] = (calendar_event_t){
+        .available = true,
+        .all_day = event->all_day,
+        .start = start,
+    };
+    snprintf(events[position].title, sizeof(events[position].title), "%s", event->title);
+    *count = new_count;
+}
+
+static size_t parse_calendar(char *text, calendar_event_t *events, size_t capacity)
 {
     unfold_ics(text);
     const time_t now = time(NULL);
-    bool found = false;
     bool inside_event = false;
     parsed_event_t event = {0};
-    time_t best_start = 0;
+    size_t count = 0;
 
     char *save = NULL;
     for (char *line = strtok_r(text, "\n", &save); line != NULL; line = strtok_r(NULL, "\n", &save)) {
@@ -341,14 +379,22 @@ static bool parse_calendar(char *text, calendar_event_t *next_event)
             continue;
         }
         if (strcmp(line, "END:VEVENT") == 0) {
-            time_t candidate = 0;
-            if (event_candidate(&event, now, &candidate) && (!found || candidate < best_start)) {
-                found = true;
-                best_start = candidate;
-                next_event->available = true;
-                next_event->all_day = event.all_day;
-                next_event->start = candidate;
-                snprintf(next_event->title, sizeof(next_event->title), "%s", event.title);
+            if (capacity > 0 && event.rule[0] != '\0') {
+                const recurrence_rule_t rule = parse_rule(event.rule);
+                time_t cursor = now;
+                for (size_t occurrence = 0; occurrence < capacity; ++occurrence) {
+                    time_t candidate = 0;
+                    if (!next_recurrence(&event, &rule, cursor, &candidate)) {
+                        break;
+                    }
+                    insert_event(events, capacity, &count, &event, candidate);
+                    cursor = candidate + event_duration(&event);
+                }
+            } else {
+                time_t candidate = 0;
+                if (capacity > 0 && event_candidate(&event, now, &candidate)) {
+                    insert_event(events, capacity, &count, &event, candidate);
+                }
             }
             inside_event = false;
             continue;
@@ -373,7 +419,7 @@ static bool parse_calendar(char *text, calendar_event_t *next_event)
             event.cancelled = true;
         }
     }
-    return found;
+    return count;
 }
 
 static esp_err_t http_event(esp_http_client_event_t *event)
@@ -408,7 +454,11 @@ static esp_err_t http_event(esp_http_client_event_t *event)
     return ESP_OK;
 }
 
-static esp_err_t fetch_calendar(const char *url, calendar_event_t *next_event)
+static esp_err_t fetch_calendar(
+    const char *url,
+    calendar_event_t *events,
+    size_t capacity,
+    size_t *event_count)
 {
     ESP_LOGI(
         TAG,
@@ -444,8 +494,8 @@ static esp_err_t fetch_calendar(const char *url, calendar_event_t *next_event)
         err = response.overflow ? ESP_ERR_NO_MEM : ESP_ERR_INVALID_RESPONSE;
     }
     if (err == ESP_OK) {
-        memset(next_event, 0, sizeof(*next_event));
-        parse_calendar(response.data, next_event);
+        memset(events, 0, capacity * sizeof(*events));
+        *event_count = parse_calendar(response.data, events, capacity);
     } else {
         ESP_LOGW(TAG, "Calendar download stopped after %u bytes", (unsigned)response.length);
     }
@@ -454,11 +504,18 @@ static esp_err_t fetch_calendar(const char *url, calendar_event_t *next_event)
     return err;
 }
 
-static void publish(calendar_source_state_t state, const calendar_event_t *event)
+static void publish(calendar_source_state_t state, const calendar_event_t *events, size_t event_count)
 {
     portENTER_CRITICAL(&s_lock);
     s_state = state;
-    if (event != NULL) s_event = *event;
+    if (events != NULL) {
+        if (event_count > CALENDAR_EVENT_LIMIT) event_count = CALENDAR_EVENT_LIMIT;
+        memcpy(s_events, events, event_count * sizeof(*events));
+        if (event_count < CALENDAR_EVENT_LIMIT) {
+            memset(s_events + event_count, 0, (CALENDAR_EVENT_LIMIT - event_count) * sizeof(*events));
+        }
+        s_event_count = event_count;
+    }
     portEXIT_CRITICAL(&s_lock);
 }
 
@@ -467,28 +524,33 @@ static void calendar_task(void *arg)
     (void)arg;
     app_config_t config;
     if (app_config_load(&config) != ESP_OK || !app_config_has_calendar(&config)) {
-        publish(CALENDAR_SOURCE_DISABLED, NULL);
+        publish(CALENDAR_SOURCE_DISABLED, NULL, 0);
         vTaskDelete(NULL);
         return;
     }
 
     if (!network_setup_wait_connected(portMAX_DELAY)) {
-        publish(CALENDAR_SOURCE_ERROR, NULL);
+        publish(CALENDAR_SOURCE_ERROR, NULL, 0);
         vTaskDelete(NULL);
         return;
     }
 
     vTaskDelay(pdMS_TO_TICKS(6000));
     while (true) {
-        publish(CALENDAR_SOURCE_SYNCING, NULL);
-        calendar_event_t event = {0};
-        const esp_err_t err = fetch_calendar(config.calendar_ical_url, &event);
+        publish(CALENDAR_SOURCE_SYNCING, NULL, 0);
+        calendar_event_t events[CALENDAR_EVENT_LIMIT] = {0};
+        size_t event_count = 0;
+        const esp_err_t err = fetch_calendar(
+            config.calendar_ical_url,
+            events,
+            CALENDAR_EVENT_LIMIT,
+            &event_count);
         if (err == ESP_OK) {
-            publish(CALENDAR_SOURCE_READY, &event);
-            ESP_LOGI(TAG, "Calendar synchronized%s", event.available ? "; next event ready" : "; no upcoming events");
+            publish(CALENDAR_SOURCE_READY, events, event_count);
+            ESP_LOGI(TAG, "Calendar synchronized; %u upcoming event(s)", (unsigned)event_count);
             vTaskDelay(pdMS_TO_TICKS(CALENDAR_REFRESH_MS));
         } else {
-            publish(CALENDAR_SOURCE_ERROR, NULL);
+            publish(CALENDAR_SOURCE_ERROR, NULL, 0);
             ESP_LOGW(TAG, "Calendar synchronization failed: %s", esp_err_to_name(err));
             vTaskDelay(pdMS_TO_TICKS(CALENDAR_RETRY_MS));
         }
@@ -499,13 +561,13 @@ void calendar_source_init(void)
 {
     app_config_t config;
     if (app_config_load(&config) != ESP_OK || !app_config_has_calendar(&config)) {
-        publish(CALENDAR_SOURCE_DISABLED, NULL);
+        publish(CALENDAR_SOURCE_DISABLED, NULL, 0);
         return;
     }
 
-    publish(CALENDAR_SOURCE_SYNCING, NULL);
+    publish(CALENDAR_SOURCE_SYNCING, NULL, 0);
     if (xTaskCreate(calendar_task, "calendar", 8192, NULL, 4, NULL) != pdPASS) {
-        publish(CALENDAR_SOURCE_ERROR, NULL);
+        publish(CALENDAR_SOURCE_ERROR, NULL, 0);
     }
 }
 
@@ -513,7 +575,25 @@ calendar_source_state_t calendar_source_get(calendar_event_t *event)
 {
     portENTER_CRITICAL(&s_lock);
     const calendar_source_state_t state = s_state;
-    if (event != NULL) *event = s_event;
+    if (event != NULL) {
+        *event = s_event_count > 0 ? s_events[0] : (calendar_event_t){0};
+    }
+    portEXIT_CRITICAL(&s_lock);
+    return state;
+}
+
+calendar_source_state_t calendar_source_get_events(
+    calendar_event_t *events,
+    size_t capacity,
+    size_t *count)
+{
+    portENTER_CRITICAL(&s_lock);
+    const calendar_source_state_t state = s_state;
+    const size_t copy_count = s_event_count < capacity ? s_event_count : capacity;
+    if (events != NULL && copy_count > 0) {
+        memcpy(events, s_events, copy_count * sizeof(*events));
+    }
+    if (count != NULL) *count = copy_count;
     portEXIT_CRITICAL(&s_lock);
     return state;
 }
