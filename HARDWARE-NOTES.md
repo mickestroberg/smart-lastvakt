@@ -17,6 +17,43 @@ Uppgifterna nedan kommer från märkningen på den ännu inte installerade belas
 
 Datablad: [Benedict R25-serien](https://www.benedict.at/files/download/other/D994E.pdf).
 
+### Verifierad funktion enligt COALAs pappersmanual
+
+Följande är sammanfattat från fyra fotograferade manualsidor för EVS1-3. Bilderna är inte incheckade i Git-förrådet.
+
+- Vakten mäter strömmen 100 gånger per sekund, lågpassfiltrerar och bestämmer den högsta fasströmmen fyra gånger per sekund. Det är den maximala fasströmmen som används av tillståndslogiken.
+- `Imax` kan ställas på de fasta värdena **10, 16, 20 eller 25 A**; mellanliggande värden stöds inte.
+- Hysteresen/effektreduceringsvärdet kan ställas mellan 0 och 10 kW resistiv last vid 400 V. Värdet anger hur mycket belastningen ska sjunka innan frånkopplad last får återanslutas.
+- Manualen anger att hysteresvärdet ska vara större än summan av de laster som kopplas bort för att den automatiska lastavkänningen ska kunna avgöra om respektive last får plats.
+- Vid uppstart dras båda interna reläerna så att båda lasterna kopplas bort under fem minuter. Fördröjningen kan hoppas över med snabbstartsknappen.
+- I normalt tillstånd är båda interna reläerna fallna och ingen lastreducering är aktiv.
+- Vid överström aktiveras **Re1 först** efter en progressiv fördröjning. Om överströmmen kvarstår aktiveras därefter **Re2** efter ytterligare progressiv fördröjning.
+- Vid sjunkande belastning återansluts lasten som styrs av **Re2 först**. Lasten på Re1 är alltså först bort och sist tillbaka.
+- Om strömmen sjunker under `Imax` minus hysteresvärdet går vakten tillbaka till normalt läge. I mellanområdet försöker den stegvis återansluta en last när den bedöms få plats.
+- Om strömmen tillfälligt sjunker under referensvärdet medan nästa frånkopplingsfördröjning pågår börjar fördröjningen om.
+
+Manualens diagram anger följande fördröjning som funktion av överlast:
+
+| Diagrammets överlastintervall | Fördröjning |
+|---|---:|
+| `< 6,25 %` | 42,7 min |
+| `< 12,5 %` | 21,3 min |
+| `< 25 %` | 10,7 min |
+| `< 37 %` | 2,7 min |
+| `< 50 %` | 0,7 min |
+| `> 50 %` | 0,3 min |
+
+Vid inställningen 25 A motsvarar 50 procent överlast cirka 37,5 A på den högst belastade fasen. Tabellen ska betraktas som en återgivning av manualens diskreta diagram, inte som en fullständig säkringskurva.
+
+Lysdioderna betyder enligt manualen:
+
+- **Aktiv, fast grönt:** strömmen är under inställt maxvärde.
+- **Aktiv, blinkande grönt:** maxvärdet överskrids, även under tiden innan någon last hunnit kopplas bort.
+- **Sparläge, blinkande rött:** en last är frånkopplad.
+- **Sparläge, fast rött:** båda lasterna är frånkopplade.
+
+EVS1-3 matas med 230 V på `L` och `N`, saknar inbyggd säkring och ska enligt manualen strömförsörjas via en säkring i centralen; principskissen anger högst 10 A. Skyddsjord används inte i enheten. De tre strömtransformatorerna monteras på inkommande faser och ansluts till `S1`, `S2` och `S3`, med gemensam retur enligt manualens plintmarkering. Detta är installationsinformation för elektrikern, inte en instruktion för egen inkoppling.
+
 ### Föreslagen princip
 
 COALA behålls som fristående lokal effektvakt. En smart tvåkanalig DIN-modul läggs i serie med COALAs två styrutgångar och kan endast blockera eller tillåta kontaktorspolarna. Elpatronens trefaslast ska inte ledas genom smartmodulen, och smartmodulen får aldrig kunna kringgå pannans termostat, överhettningsskydd eller annan säkerhetskedja.
@@ -30,6 +67,8 @@ Det ger följande ansvarsfördelning:
 Om smartmodulens kontakt skulle fastna sluten ska COALA fortfarande kunna koppla bort lasten. Ett manuellt, tydligt märkt **SMART/BYPASS-läge** bör övervägas så att anläggningen kan återgå till enbart COALA-drift om smartstyrningen eller nätverket fallerar.
 
 Tibberdata som är för gammal eller saknas får aldrig ersättas med simulerade värden i relälogiken. Simulering är endast tillåten i displayvyn. Beteendet vid förlorad Tibberdata, strömavbrott och omstart ska fastställas tillsammans med elektrikern innan inkoppling.
+
+Eftersom COALA nu är verifierad som självständig tvåstegsvakt är den föredragna programvarustrategin vid förlorad Tibberdata att smartmodulen blir transparent och tillåter båda stegen, så att COALA ensam tar över regleringen. Ett smart pris- eller Tibberbaserat stopp bör därför utformas som en tidsbegränsad blockering som måste förnyas; om styrningen försvinner ska blockeringen löpa ut. Strömavbrott i själva smartmodulen kräver fortfarande en definierad reservlösning, exempelvis SMART/BYPASS.
 
 ### Kandidat för smartmodul
 
@@ -54,8 +93,10 @@ Produktinformation: [Shelly Pro 2](https://www.shelly.com/products/shelly-pro-2)
 - Separera displayens simulerade fasvärden helt från relälogiken.
 - Använd färskhetskontroll på varje Tibbermätning och behandla saknade fasvärden som ogiltiga.
 - Koppla bort stegvis och återinkoppla med hysteres och tidsfördröjning för att undvika kontaktorpendling.
+- Ta hänsyn till COALAs egen prioritet: Re1 kopplas bort först och återkommer sist, medan Re2 kopplas bort sist och återkommer först.
 - Låt fasgränser alltid ha företräde framför prisoptimering.
 - Tillåt aldrig att smartstyrningen tvingar igång värme; den får endast begränsa tillåtna effektsteg.
+- Låt en smart blockering löpa ut automatiskt om den inte förnyas, så att anläggningen återgår till COALA-drift vid kommunikationsfel.
 - Logga mätvärde, datans ålder, beslut, kontaktororder och eventuell lägesåterkoppling.
 
 Tibber anger att realtidsdata kan fördröjas eller grupperas och att enskilda fält kan saknas. Se [Tibbers API-referens](https://developer.tibber.com/api/reference.md).
