@@ -54,9 +54,37 @@ Lysdioderna betyder enligt manualen:
 
 EVS1-3 matas med 230 V på `L` och `N`, saknar inbyggd säkring och ska enligt manualen strömförsörjas via en säkring i centralen; principskissen anger högst 10 A. Skyddsjord används inte i enheten. De tre strömtransformatorerna monteras på inkommande faser och ansluts till `S1`, `S2` och `S3`, med gemensam retur enligt manualens plintmarkering. Detta är installationsinformation för elektrikern, inte en instruktion för egen inkoppling.
 
+### Relek-elpatron – exakt modell ännu okänd
+
+Ett fotografi visar en installerad elpatron från **Relek Produktion AB** med temperaturvred graderat från 0 och 30–90 °C samt röd manuell återställningsknapp. Ingen typskylt med exakt modell eller effekt har ännu hittats. Vredet och kapslingen räcker inte för säker identifiering eftersom samma montage- och skötselanvisning omfattar flera snarlika modeller.
+
+Den fotograferade manualen är *Montage- & skötselanvisning för Elpatroner*, uppdaterad februari 2021, och omfattar EP1, PP1, EP2, PP2, PPS och PF. Manualen anger följande modellskillnader:
+
+| Modellfamilj | Utförande enligt manualen | Effektlägen |
+|---|---|---|
+| EP1, PP1 | Ett steg, trerörselement, kopplingsbox K8, termostat 30–85 °C | Full effekt eller av |
+| EP2, PP2 | Två steg, trerörselement, kopplingsbox K7 eller K8, termostat 30–90 °C | Full effekt, halv effekt eller av |
+| PPS | Fyra steg, sexrörselement, kopplingsbox K7 eller K8, termostat 30–90 °C | Full, 3/4, 1/2, 1/4 eller av |
+| PF 9000 W | 400 V AC3 N~, sexrörselement, kopplingsbox K8, fyrstegstermostat 30–90 °C | Har dessutom kontaktor och tidsrelä för halverad effekt |
+
+Alla beskrivna modeller har trepoligt temperaturbegränsnings-/överhettningsskydd med manuell återställning. Manualen anger att skyddet normalt löser vid cirka 94 °C; golvvärmevarianten EP-G anges till cirka 60 °C. Elpatronen ska föregås av en allpolig strömställare/huvudbrytare.
+
+Sidan för **PF 9000 W** är relevant men får tills vidare bara behandlas som en möjlig modell, inte som identifiering av den installerade patronen. För PF anger manualen:
+
+- märkeffekt 9 kW vid 400 V trefas med neutralledare;
+- inbyggt tidsfördröjningsrelä som halverar effekten under två timmar efter strömavbrott och vid uppstart;
+- intern kontaktor för halv effekt, styrd av tidsreläet och en eventuell extern effektvakt;
+- särskild anslutning `K` för signal från effektvakt; utan effektvakt byglas `F–K` enligt schemat.
+
+Om patronen verkligen är PF 9000 W blir den beräknade resistiva fasströmmen ungefär 13,0 A vid full effekt och 6,5 A vid halv effekt vid 400 V. Ett belastningstest direkt efter spänningssättning kan då visa halv effekt i två timmar och får inte användas ensamt för att identifiera patronens märkeffekt.
+
+PF-variantens dedikerade effektvaktsingång kan påverka den slutliga konstruktionen väsentligt. Elektrikern ska därför verifiera modell, intern koppling och vad plintarna `F` och `K` används till innan det bestäms om de externa Benedict-kontaktorerna ska bryta effekt, styra andra laster eller samverka med patronens interna kontaktor.
+
 ### Föreslagen princip
 
 COALA behålls som fristående lokal effektvakt. En smart tvåkanalig DIN-modul läggs i serie med COALAs två styrutgångar och kan endast blockera eller tillåta kontaktorspolarna. Elpatronens trefaslast ska inte ledas genom smartmodulen, och smartmodulen får aldrig kunna kringgå pannans termostat, överhettningsskydd eller annan säkerhetskedja.
+
+Principen är preliminär tills Relek-patronens exakta modell och befintliga styrkrets har verifierats. Om det är PF 9000 W kan dess avsedda effektvaktsingång vara lämpligare för en del av styrningen än extern brytning av huvudströmmen.
 
 Det ger följande ansvarsfördelning:
 
@@ -80,6 +108,8 @@ Produktinformation: [Shelly Pro 2](https://www.shelly.com/products/shelly-pro-2)
 
 ### Kvar att fastställa
 
+- Relek-elpatronens exakta typbeteckning, märkeffekt och typskylt.
+- Om patronen har den interna tvåtimmarsfördröjningen och effektvaktsingången `F–K` som beskrivs för PF 9000 W.
 - Vilken kontaktor som styr elpatronsteg 1 respektive steg 2.
 - Effekt i kW och ström per fas för respektive steg.
 - Önskat reservläge vid förlorad Tibberdata, nätverk, styrspänning eller omstart.
