@@ -4,6 +4,8 @@ En svensk klocka och fasvakt för **Waveshare ESP32-S3-Touch-LCD-4.3B-BOX** (800
 
 Standardvärdet för huvudsäkringen är **25 A**.
 
+För projektets samlade mål, aktuella status, fattade beslut, säkerhetsprinciper, prioriterade nästa steg och överlämning till nya trådar, börja med **[PROJECT-STATUS.md](PROJECT-STATUS.md)**. Elektriska apparatuppgifter och ännu öppna frågor om COALA och elpatronen finns i [HARDWARE-NOTES.md](HARDWARE-NOTES.md).
+
 ![Förhandsvisning av gränssnittet](ui-preview.svg)
 
 ## Funktioner

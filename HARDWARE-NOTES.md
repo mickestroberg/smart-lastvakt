@@ -92,6 +92,18 @@ Det ger följande ansvarsfördelning:
 - **Smartmodul:** fasoptimering, prisstyrning, loggning och användargränssnitt.
 - **Befintlig pannstyrning:** värmebehov och apparatens ordinarie säkerhetsfunktioner.
 
+### Fastslagen princip för fasvis mätning och trefasfrånkoppling
+
+Tibber och COALA mäter belastningen separat på L1, L2 och L3. Den högst belastade fasen får utlösa en begränsning, men elpatronen ska som grundprincip reduceras genom ett komplett och balanserat trefassteg. Endast den överbelastade fasen ska inte brytas separat. Ett sådant osymmetriskt driftläge får övervägas endast om Relek uttryckligen verifierar att den exakta patronen har oberoende avsedda enfassteg och elektrikern projekterar inkopplingen för detta.
+
+En tidig smart gräns omkring 23 A har diskuterats för att skapa marginal till huvudsäkringens 25 A, men är ännu inte beslutad som programparameter. Slutlig gräns, hysteres och fördröjning beror på den uppmätta strömminskningen för varje verkligt effektsteg.
+
+### Varför det finns två externa kontaktorer
+
+COALAs två interna styrreläer är avsedda att styra varsin kontaktorspole. De två Benedict-enheterna gör den faktiska trepoliga lastbrytningen och kan därför användas för antingen två separata trefaslaster eller två balanserade trefassteg i samma last. `Re1` har lägst prioritet eftersom den lasten kopplas bort först och återansluts sist; `Re2` kopplas bort därefter och återansluts först.
+
+Fotografierna visar inte tillräckligt för att avgöra vilka huvudlaster kontaktorerna är avsedda att mata. Det är alltså inte fastställt att en kontaktor hör till elpatronen och den andra till en annan apparat, eller att båda hör till patronens två steg. Elektrikern ska följa huvudledningarna och märka upp kontaktorerna innan detta används i styrlogiken.
+
 Om smartmodulens kontakt skulle fastna sluten ska COALA fortfarande kunna koppla bort lasten. Ett manuellt, tydligt märkt **SMART/BYPASS-läge** bör övervägas så att anläggningen kan återgå till enbart COALA-drift om smartstyrningen eller nätverket fallerar.
 
 Tibberdata som är för gammal eller saknas får aldrig ersättas med simulerade värden i relälogiken. Simulering är endast tillåten i displayvyn. Beteendet vid förlorad Tibberdata, strömavbrott och omstart ska fastställas tillsammans med elektrikern innan inkoppling.
