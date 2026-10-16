@@ -9,6 +9,9 @@
 .idea/
 Thumbs.db
 .DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
 
 # Never commit device dumps or credentials
 *factory-backup*.bin

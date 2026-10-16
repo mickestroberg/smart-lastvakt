@@ -56,6 +56,12 @@ Shelly-pluggen provades först i ett uttag på L3 medan mikrons ordinarie uttag 
 
 Bygget är kompilerat, flashat och startverifierat på den verkliga panelen. Se [README.md](README.md) för användning och [BUILD-REPORT.md](BUILD-REPORT.md) för verifierade detaljer.
 
+## Hårdvarufri utveckling
+
+En frikopplad referensmodell för framtida tvåstegsstyrning finns i `tools/load_guard_policy.py`. Den har inga nätverks- eller reläutgångar och ingår inte i ESP32-firmware. Modellen gör det möjligt att testa fasgränser, stegordning, fördröjningar, återinkopplingsutrymme, datans färskhet och tidsbegränsade externa blockeringar innan den verkliga installationen är känd.
+
+Automatiserade datorbaserade tester finns i `tests/test_load_guard_policy.py`. Se [LOAD-GUARD-POLICY.md](LOAD-GUARD-POLICY.md) för beteende, avgränsning och körning.
+
 ## Sekretess och konfiguration
 
 Följande får aldrig checkas in, skrivas i dokumentation eller återges i loggutdrag:
@@ -136,7 +142,8 @@ Målbilden är att kunna hindra start när fasbelastningen är olämplig och ge 
 5. Rita och godkänn slutligt kopplingsschema, inklusive reservläge, SMART/BYPASS och eventuell återkoppling från hjälpkontakterna.
 6. Bestäm slutliga styrgränser, hysteres, minsta till-/fråntider och beteende vid omstart eller saknad data.
 7. Verifiera Shelly-pluggens lämplighet och mikrons verkliga belastning innan automatisk mikrostyrning.
-8. Först därefter implementera relälogik för elpatronen.
+8. Ersätt referensmodellens exempelparametrar med mätta och godkända värden.
+9. Porta den testade policyn till firmware och implementera fysisk relälogik först därefter.
 
 ## Öppna konstruktionsfrågor
 
@@ -155,6 +162,7 @@ Målbilden är att kunna hindra start när fasbelastningen är olämplig och ge 
 - [README.md](README.md) – funktioner, användning, installation, konfiguration, byggning och flashning.
 - [PROJECT-STATUS.md](PROJECT-STATUS.md) – mål, nuläge, beslut, prioriteringar och överlämning.
 - [HARDWARE-NOTES.md](HARDWARE-NOTES.md) – verifierade apparatuppgifter, COALA-logik, elpatron och säkerhetskrav.
+- [LOAD-GUARD-POLICY.md](LOAD-GUARD-POLICY.md) – icke-aktuerande referensmodell, tillståndsregler och automatiserade tester.
 - [BUILD-REPORT.md](BUILD-REPORT.md) – verifierat bygge, verklig enhet, firmwarestorlekar och fabriksbackup.
 - [firmware/README.md](firmware/README.md) – färdiga binärfiler och flashoffset.
 - [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) – externa komponenter och datakällor.

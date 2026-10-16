@@ -22,6 +22,7 @@ När en uppgift ändrar verifierad funktion, ett viktigt beslut, hårdvarukunska
 - användning eller mjukvarufunktion → `README.md`;
 - samlad status, beslut och nästa steg → `PROJECT-STATUS.md`;
 - elektrisk utrustning och styrprincip → `HARDWARE-NOTES.md`;
+- referensmodellens beteende eller testparametrar → `LOAD-GUARD-POLICY.md`;
 - verifierad bygg-, flash- eller enhetsstatus → `BUILD-REPORT.md`.
 
 Håll `PROJECT-STATUS.md` användbart som fristående överlämning. Om uppgifterna motsäger äldre dokumentation ska motsägelsen lösas eller markeras uttryckligt; lägg inte bara till ännu en version av sanningen.

@@ -6,6 +6,8 @@ Standardvärdet för huvudsäkringen är **25 A**.
 
 För projektets samlade mål, aktuella status, fattade beslut, säkerhetsprinciper, prioriterade nästa steg och överlämning till nya trådar, börja med **[PROJECT-STATUS.md](PROJECT-STATUS.md)**. Elektriska apparatuppgifter och ännu öppna frågor om COALA och elpatronen finns i [HARDWARE-NOTES.md](HARDWARE-NOTES.md).
 
+En frikopplad, datorbaserad referensmodell för framtida tvåstegsstyrning finns beskriven i [LOAD-GUARD-POLICY.md](LOAD-GUARD-POLICY.md). Den används för simulering och tester och är inte ansluten till firmware eller fysiska reläer.
+
 ![Förhandsvisning av gränssnittet](ui-preview.svg)
 
 ## Funktioner
@@ -57,6 +59,17 @@ Projektet använder ESP-IDF 5.5.5. Hanterade komponenter hämtas automatiskt vid
 idf.py set-target esp32s3
 idf.py build
 ```
+
+## Testa styrprincipen utan hårdvara
+
+Referensmodellen använder endast Pythons standardbibliotek:
+
+```powershell
+python -m unittest discover -s tests -v
+python -m tools.simulate_load_guard
+```
+
+Exempelvärdena är inte installationsinställningar. Modellen har inga fysiska utgångar.
 
 ## Flasha
 
