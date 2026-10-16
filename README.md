@@ -28,6 +28,7 @@ Standardvärdet för huvudsäkringen är **25 A**.
 
 - En enkel gemensam inköpslista med möjlighet att lägga till exempelvis ”mjölk” från mobil eller display.
 - Säker automatisk lastfrånkoppling för mikron efter att installationen och mikrons verkliga förbrukning har verifierats på plats.
+- Pris- och fasstyrd begränsning av elpatronens två effektsteg som ett smart tillägg i serie med den separata COALA-vakten. Verifierade apparatuppgifter och öppna konstruktionsfrågor finns i [HARDWARE-NOTES.md](HARDWARE-NOTES.md).
 
 Kalendern läses skrivskyddat via Googles hemliga iCal-adress. Adressen lagras endast på enheten, aldrig i Git-förrådet eller i loggarna.
 
