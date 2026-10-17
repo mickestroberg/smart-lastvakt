@@ -48,7 +48,9 @@ TLS-arbetsminnet placeras i kortets PSRAM och dynamiska TLS-buffertar används. 
 
 Samtliga **17** datorbaserade policytester passerade. De nya mikrovågstesterna omfattar gränsvärdet 20,0 A, aktivlastkravet, saknad/simulerad/gammal Tibberdata, avstängt eller upptaget Shellyrelä och att endast L1 används för just mikrons beslut.
 
-Efter flash verifierades att panelen startade utan panik, anslöt till Wi-Fi, synkroniserade NTP, startade Tibbers websocket, läste kalendern, hämtade väder och efter automatisk återprovning anslöt till Shellyn med reläet fortsatt på och 0 W last. Själva 20 A-gränsen har ännu inte utlösts fysiskt; ett kontrollerat auto-stopp-prov och visuell kontroll av bekräftelsedialogen återstår.
+Efter flash verifierades att panelen startade utan panik, anslöt till Wi-Fi, synkroniserade NTP, startade Tibbers websocket, läste kalendern, hämtade väder och efter automatisk återprovning anslöt till Shellyn med reläet fortsatt på och 0 W last.
+
+Senare 2026-10-17 fältprovades funktionen under verklig hushållslast. Elpatronen var igång, ugnen belastade L1 och mikron användes för att smälta smör. Mikron blev automatiskt strömlös efter ungefär 30 sekunder. En familjemedlem hittade därefter reläsidan och lyckades med den manuella återinkopplingen utan instruktioner. Det verifierar det avsedda användarbeteendet från automatisk brytning till mänskligt kvitterad återinkoppling. Ingen logg eller tidsserie fångades under provet, så cirka 30 sekunder ska inte tolkas som vaktens reaktionstid från att L1 passerade 20 A.
 
 ## Fabriksbackup
 

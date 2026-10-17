@@ -60,7 +60,7 @@ Ett efterföljande treminutersprov med en liter vatten gav högst **1723,4 W**, 
 - Svenska tecken i Shelly-lägena och ersättning av kalenderemoji som saknar skärmglyf.
 - Lokal installationssida för Wi-Fi, Tibber-token, privat kalenderadress och Shelly-adress.
 
-20 A-versionen kompilerades, flashades och startverifierades på den verkliga panelen 2026-10-17. Ett kontrollerat prov som faktiskt utlöser den automatiska frånkopplingen återstår. Se [README.md](README.md) för användning och [BUILD-REPORT.md](BUILD-REPORT.md) för verifierade detaljer.
+20 A-versionen kompilerades, flashades och startverifierades på den verkliga panelen 2026-10-17. Senare samma dag gav verklig samtidig hushållslast ett lyckat fältprov av både automatisk frånkoppling och manuell återinkoppling. Se [README.md](README.md) för användning och [BUILD-REPORT.md](BUILD-REPORT.md) för verifierade detaljer.
 
 ## Hårdvarufri utveckling
 
@@ -136,7 +136,7 @@ Den bekräftade PF-modellen har enligt märkning och manual:
 
 Nuvarande firmware ger övervakning, skyddad manuell relästyrning och automatisk **frånkoppling** enligt 20 A-regeln ovan. Efter auto-stopp ligger uttaget av tills en människa återinkopplar det på reläsidan. Systemet innehåller ingen automatisk tillkoppling och kan därför inte starta en matlagningscykel efter att lasten har sjunkit.
 
-Funktionen är avsiktligt försiktig med datakvalitet: om Tibbervärdet är simulerat, saknas eller är äldre än fem sekunder gör automatiken ingenting och visar att skyddet inte är tillgängligt. Den fysiska frånkopplingskedjan över 20 A har ännu inte utlösts i ett kontrollerat prov. Verklig drift är uppmätt, men IKEA-manualens formulering om extern styrning och Shellyns märkning för resistiv last är fortfarande öppna frågor för permanent användning.
+Funktionen är avsiktligt försiktig med datakvalitet: om Tibbervärdet är simulerat, saknas eller är äldre än fem sekunder gör automatiken ingenting och visar att skyddet inte är tillgängligt. Den 2026-10-17 provades hela användarkedjan i verklig drift: elpatronen var igång, ugnen belastade L1 och mikron startades. Mikron blev automatiskt strömlös efter ungefär 30 sekunder, varefter användaren hittade den manuella återinkopplingen på panelen utan instruktioner. Ingen tidsserie sparades, så de 30 sekunderna är inte vaktens uppmätta reaktionstid; tidpunkten då L1 faktiskt passerade 20 A är okänd. IKEA-manualens formulering om extern styrning och Shellyns märkning för resistiv last är fortfarande öppna frågor för permanent användning.
 
 ## Planerade familjefunktioner
 
@@ -149,7 +149,7 @@ Funktionen är avsiktligt försiktig med datakvalitet: om Tibbervärdet är simu
 
 ## Nästa steg i prioriterad ordning
 
-1. Genomför ett kontrollerat prov av mikrons auto-stopp och den manuella återinkopplingsdialogen; slutversionen ska därefter åter vara verifierad på 20 A.
+1. Lägg till en liten lokal händelselogg med tidsstämplar för mikrovakten, L1-värde, Tibbervärdets ålder, Shellyeffekt och reläkommando så att nästa verkliga stopp kan analyseras i efterhand.
 2. Gör en slutlig säkerhetsbedömning av Shelly-pluggens lämplighet för mikron, inklusive korta startströmmar och IKEA-manualens begränsning av extern styrning.
 3. Låt elektrikern fastställa vad de två Benedict-kontaktorerna matar och vilken som styrs av `Re1` respektive `Re2`.
 4. Kontrollera den bekräftade PF-patronens interna kontaktor och om effektvaktsingången `F–K` är byglad, ansluten eller ledig.

@@ -41,7 +41,9 @@ Den första aktiva firmwareversionen använder följande regel:
 
 Det korta mikrovågsprovet visade cirka 7,9 A som högsta observerade ström. 20 A-gränsen lämnar därmed ungefär 12 A för övriga L1-laster under den observerade mikrokörningen och cirka 5 A till huvudsäkringens nominella 25 A. Lägre vald mikrovågseffekt ska inte räknas som proportionellt lägre ögonblickslast eftersom många mikrovågsugnar reglerar med full effekt i intervaller.
 
-Frånkopplingen arbetar med Tibbers uppdatering, lokalt nätverk, Shellyavläsning och reläkommando. Den är därför laststyrning med sekunders fördröjning, inte överströmsskydd, och ersätter inte säkring eller annan skyddsutrustning. Automatisk frånkoppling över 20 A är kompilerad och flashad 2026-10-17; ett kontrollerat prov som faktiskt utlöser gränsen återstår.
+Frånkopplingen arbetar med Tibbers uppdatering, lokalt nätverk, Shellyavläsning och reläkommando. Den är därför laststyrning med sekunders fördröjning, inte överströmsskydd, och ersätter inte säkring eller annan skyddsutrustning. Automatisk frånkoppling över 20 A kompilerades och flashades 2026-10-17.
+
+Senare samma dag gav en verklig hushållssituation ett lyckat fältprov: elpatronen var igång, ugnen belastade L1 och mikron startades. Mikron blev automatiskt strömlös efter ungefär 30 sekunder. Därefter hittade en familjemedlem den skyddade manuella återinkopplingen på panelen utan instruktioner. Det bekräftar det avsedda systembeteendet i praktiken, men ingen logg fångade exakt L1-värde eller tidpunkten då 20 A passerades. Den observerade tiden får därför inte användas som mått på styrningens reaktionsfördröjning.
 
 Källor: [IKEA RAFFINERAD-manual](https://www.ikea.com/se/sv/manuals/raffinerad-mikrovagsugn__AA-1513160-2.pdf) och [Shelly Plug S Gen3 – tekniska data](https://kb.shelly.cloud/knowledge-base/shelly-plug-s-mtr-gen3).
 

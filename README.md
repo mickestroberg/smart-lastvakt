@@ -56,6 +56,8 @@ SSID, lösenord, Tibber-token, kalenderadress och Shelly-adress lagras i ESP32-e
 
 20 A-funktionen är laststyrning med Tibbers och det lokala nätverkets normala fördröjning. Den ersätter inte huvudsäkring, elinstallationens skydd eller tillsyn av mikrovågsugnen.
 
+Den kompletta användarkedjan fältprovades i hemmet 2026-10-17 med elpatronen igång, ugnen som samtidig L1-last och mikron i drift. Mikron blev automatiskt strömlös efter ungefär 30 sekunder, och en familjemedlem hittade därefter den manuella återinkopplingen på panelen utan instruktioner. Tiden är hela den observerade mikrokörningen, inte en uppmätt reaktionstid från det ögonblick då L1 passerade 20 A.
+
 ## Bygga
 
 Projektet använder ESP-IDF 5.5.5. Hanterade komponenter hämtas automatiskt vid första byggningen.
