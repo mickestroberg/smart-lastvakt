@@ -11,9 +11,9 @@ Datum: 2026-10-17
 - LVGL: 8.4.0
 - Flash: 16 MB QIO, 80 MHz
 - PSRAM: 8 MB OPI, 80 MHz
-- Appbild: 1 592 528 byte
+- Appbild: 1 597 888 byte (`0x1861C0`)
 - Apppartition: 8 388 608 byte
-- Ledigt i apppartitionen: 6 796 080 byte (81 %)
+- Ledigt i apppartitionen: 6 790 720 byte (81 %)
 
 ESP-IDF-bygget slutfördes utan kompilerings- eller länkfel. Bootloader, partitionstabell och appbild skrevs till kortet och esptool verifierade hashen för samtliga skrivningar.
 
@@ -37,7 +37,7 @@ Efter nätverkskonfiguration verifierades även:
 - NTP-synkroniserad svensk tid och automatisk minutvis NTP-återprovning om den första synkroniseringen misslyckas;
 - validerad TLS-kedja till Google Kalender, fullständig iCal-hämtning och hittad nästa händelse;
 - inläsning och sortering av sex kommande kalenderhändelser till den tryckbara kalenderöversikten;
-- hämtning från Open-Meteo av 11,5 °C och WMO-väderkod 3 för Älvsjö, samtidigt som kalender och Tibber fortsatte fungera;
+- hämtning från Open-Meteo av 11,5 °C och WMO-väderkod 3 för Älvsjö vid det tidigare integrationsprovet, samtidigt som kalender och Tibber fortsatte fungera;
 - skrivskyddad lokal anslutning till Shelly Plug S Gen3 på `192.168.68.121`, med avläst reläläge, effekt och cirka 239 V samtidigt som övriga datakällor fortsatte fungera;
 - egen Shelly-sida med lägena REDO, KÖR och STRÖMLÖS samt två sekunders långtryck och separat bekräftelse före reläändring;
 - automatisk **AV**-begäran endast när mikron drar minst 500 W och färsk Tibberdata visar L1 över 20,0 A; reläsidan visar aktuell L1 före manuell återinkoppling;
@@ -46,9 +46,11 @@ Efter nätverkskonfiguration verifierades även:
 
 TLS-arbetsminnet placeras i kortets PSRAM och dynamiska TLS-buffertar används. Samtidigt reserveras internt DMA-minne och LVGL:s delbuffert är anpassad så att kalenderhämtning, flimmerfri bild och Tibbers liveanslutning fungerar samtidigt. Om Tibber Pulse tillfälligt saknar data fortsätter vyn med simulerade värden och försöker återansluta automatiskt.
 
-Samtliga **17** datorbaserade policytester passerade. De nya mikrovågstesterna omfattar gränsvärdet 20,0 A, aktivlastkravet, saknad/simulerad/gammal Tibberdata, avstängt eller upptaget Shellyrelä och att endast L1 används för just mikrons beslut.
+Samtliga **26** datorbaserade tester passerade. Sviten omfattar lastvaktsmodellen, mikrons 20 A-skydd samt matlagningstimrarnas gränser, monotona nedräkning, paus, fortsättning, avslut och kvittering.
 
-Efter flash verifierades att panelen startade utan panik, anslöt till Wi-Fi, synkroniserade NTP, startade Tibbers websocket, läste kalendern, hämtade väder och efter automatisk återprovning anslöt till Shellyn med reläet fortsatt på och 0 W last.
+Timerutgåvan byggdes och flashades framgångsrikt via COM11. Efter flash verifierades att panelen startade utan panik, anslöt till Wi-Fi, synkroniserade NTP, startade Tibbers websocket, läste kalendern, hämtade väder och efter automatisk återprovning anslöt till Shellyn. Den levande startloggen visade **67 343 byte internt ledigt heapminne**, **47 104 byte som största lediga DMA-block**, sex kommande kalenderhändelser, **4,1 °C** från vädertjänsten och ansluten Shelly.
+
+Den flashade timerfunktionen innehåller fyra generiska parallella timrar. Tiden ställs i timmar och minuter, inklusive upprepad ändring vid långtryck, och varje timer stöder start, paus, fortsättning, nollställning och kvittering. Nedräkningen använder monoton tid och timerläget ligger endast i RAM, så pågående timrar återställs vid omstart. När en timer är klar blinkar displayens ram och larmfält cyan/vitt. Matlagningssidan visar samtidigt L1, L2 och L3 med samma färgzoner som den ordinarie fasvyn; energivakt och mikroskydd fortsätter arbeta oberoende.
 
 Kalenderns avslappnade cachebeteende byggdes och flashades 2026-10-17. Startloggen verifierade en normal lyckad hämtning av sex händelser efter NTP-synkronisering. Koden behåller senast lyckade cache utan användarvarning vid tillfälliga synkfel och filtrerar lokalt bort en post när dess sparade sluttid passerar. Ett misslyckat kalenderanrop framkallades inte med avsikt på den verkliga panelen; den felvägen återstår därför att observera vid nästa naturliga, tillfälliga synkstörning.
 
@@ -70,4 +72,4 @@ Backupen hålls utanför Git-förrådet eftersom den kan innehålla kortspecifik
 |---|---:|---:|---|
 | `bootloader.bin` | `0x0000` | 22 288 byte | `138E55F60773EB37A68FC357992D028E5B43CC39A17AD6DD1300E82963BDBD1D` |
 | `partition-table.bin` | `0x8000` | 3 072 byte | `776239783A4A8CE1386FE68450F1D70759738C7269D8A8290837F45BC397D4A7` |
-| `lastvakt_display.bin` | `0x10000` | 1 592 528 byte | `6B8B51CF90F69582EE9373C9B75DBEA22A4530496F718C8BC3A4FE55FBDD3845` |
+| `lastvakt_display.bin` | `0x10000` | 1 597 888 byte | `32F046447394F8D801995472B5689DD67E83D31EDBC23EFE5ED7406B23BD0965` |

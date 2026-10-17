@@ -4,6 +4,7 @@ idf_component_register(
         "app_config.c"
         "app_time.c"
         "calendar_source.c"
+        "cooking_timers.c"
         "microwave_guard.c"
         "network_setup.c"
         "phase_source.c"
@@ -41,4 +42,5 @@ endif()
 
 if(lvgl_lib)
     target_compile_options(${lvgl_lib} PRIVATE -Wno-format)
+    target_include_directories(${lvgl_lib} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()

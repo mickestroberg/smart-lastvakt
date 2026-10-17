@@ -48,6 +48,9 @@ Ett efterföljande treminutersprov med en liter vatten gav högst **1723,4 W**, 
 - Batteribackad RTC vid start och NTP-korrigering efter nätanslutning.
 - Tibber Pulse i realtid för L1, L2 och L3.
 - Färgzoner: grönt till och med 10 A, orange över 10 A till och med 17,5 A och rött över 17,5 A.
+- Fyra generiska och parallella matlagningstimrar med inställning i timmar och minuter, upprepad ändring vid långtryck samt start, paus, fortsättning, nollställning och kvittering.
+- Timerlogiken använder monoton tid och fortsätter oberoende av vald sida. Tillstånden ligger endast i RAM och återställs vid omstart.
+- En färdig timer ger ett globalt cyan/vitt blinkande larm tills den kvitteras. Matlagningssidan visar samtidigt L1, L2 och L3 med samma färgzoner som den fullständiga fasvyn.
 - Automatisk växling till fasvyn i röd zon och återgång efter åtta sekunder.
 - Nästa kalenderhändelse på huvudsidan och en tryckbar sida med sex kommande händelser.
 - Privat Google-iCal, inklusive vanliga återkommande händelser.
@@ -61,13 +64,13 @@ Ett efterföljande treminutersprov med en liter vatten gav högst **1723,4 W**, 
 - Svenska tecken i Shelly-lägena och ersättning av kalenderemoji som saknar skärmglyf.
 - Lokal installationssida för Wi-Fi, Tibber-token, privat kalenderadress och Shelly-adress.
 
-20 A-versionen kompilerades, flashades och startverifierades på den verkliga panelen 2026-10-17. Senare samma dag gav verklig samtidig hushållslast ett lyckat fältprov av både automatisk frånkoppling och manuell återinkoppling. Se [README.md](README.md) för användning och [BUILD-REPORT.md](BUILD-REPORT.md) för verifierade detaljer.
+20 A-versionen kompilerades, flashades och startverifierades på den verkliga panelen 2026-10-17. Senare samma dag gav verklig samtidig hushållslast ett lyckat fältprov av både automatisk frånkoppling och manuell återinkoppling. Timerutgåvan byggdes därefter, flashades via COM11 och startverifierades med övriga livekällor anslutna. Samtliga 26 datorbaserade tester passerade. Se [README.md](README.md) för användning och [BUILD-REPORT.md](BUILD-REPORT.md) för verifierade detaljer.
 
 ## Hårdvarufri utveckling
 
 En frikopplad referensmodell för framtida tvåstegsstyrning finns i `tools/load_guard_policy.py`. Den har inga nätverks- eller reläutgångar och ingår inte i ESP32-firmware. Modellen gör det möjligt att testa fasgränser, stegordning, fördröjningar, återinkopplingsutrymme, datans färskhet och tidsbegränsade externa blockeringar innan den verkliga installationen är känd.
 
-Automatiserade datorbaserade tester finns i `tests/test_load_guard_policy.py`. Mikrons aktiva envägsvakt har dessutom en ren beslutsmodell i `tools/microwave_guard_policy.py` med tester i `tests/test_microwave_guard_policy.py`. Se [LOAD-GUARD-POLICY.md](LOAD-GUARD-POLICY.md) för beteende, avgränsning och körning.
+Automatiserade datorbaserade tester finns i `tests/test_load_guard_policy.py`. Mikrons aktiva envägsvakt har dessutom en ren beslutsmodell i `tools/microwave_guard_policy.py` med tester i `tests/test_microwave_guard_policy.py`. Matlagningstimrarnas rena tillståndsmodell finns i `tools/cooking_timer_policy.py` och provas av `tests/test_cooking_timer_policy.py`. Den samlade sviten innehåller 26 tester. Se [LOAD-GUARD-POLICY.md](LOAD-GUARD-POLICY.md) för lastvaktens beteende, avgränsning och körning.
 
 ## Sekretess och konfiguration
 
@@ -139,11 +142,17 @@ Nuvarande firmware ger övervakning, skyddad manuell relästyrning och automatis
 
 Funktionen är avsiktligt försiktig med datakvalitet: om Tibbervärdet är simulerat, saknas eller är äldre än fem sekunder gör automatiken ingenting och visar att skyddet inte är tillgängligt. Den 2026-10-17 provades hela användarkedjan i verklig drift: elpatronen var igång, ugnen belastade L1 och mikron startades. Mikron blev automatiskt strömlös efter ungefär 30 sekunder, varefter användaren hittade den manuella återinkopplingen på panelen utan instruktioner. Ingen tidsserie sparades, så de 30 sekunderna är inte vaktens uppmätta reaktionstid; tidpunkten då L1 faktiskt passerade 20 A är okänd. IKEA-manualens formulering om extern styrning och Shellyns märkning för resistiv last är fortfarande öppna frågor för permanent användning.
 
+## Matlagningstimrar
+
+Sidan **Laga mat** har fyra likadana parallella timrar, benämnda **TIMER 1** till **TIMER 4**. Ett tryck på ett timerkort öppnar inställningen. Timmar och minuter kan minskas eller ökas med korta tryck eller långtryck för upprepad ändring. Varje timer kan startas, pausas och fortsättas, nollställas eller kvitteras när den är klar.
+
+Nedräkningen beräknas mot ESP32:ans monotona tid och påverkas därför inte av NTP- eller RTC-korrigeringar. Timrarna fortsätter när användaren lämnar matlagningssidan, men lagras inte beständigt; samtliga återställs om panelen startas om. När en eller flera timrar är klara blinkar gränssnittet cyan/vitt och visar hur många som väntar på kvittering. Matlagningssidan visar hela tiden en kompakt L1/L2/L3-rad med projektets vanliga gröna, orange och röda zoner. Energiövervakningen och mikrons separata skydd fortsätter oberoende av timersidan.
+
 ## Planerade familjefunktioner
 
-- Ett **matlagningsläge** med minst fyra samtidiga, namngivna timrar, exempelvis ÄGG, POTATIS, BRÖD och UGN. Timrarna ska fortsätta oberoende av vald vy och energivakten ska alltid fortsätta arbeta i bakgrunden.
-- Timrarna bör använda monoton tid under normal drift så att en NTP-korrigering inte ändrar koktiden. Om återställning efter omstart önskas kan återstående sluttid dessutom sparas mot RTC/NVS.
 - Möjlig stektermometer: livsmedelsklassad typ-K-insticksprob via en I²C-omvandlare av typen MCP9600. Elektroniken ska sitta utanför ugnen; endast en värmetålig, uttryckligen livsmedelsavsedd prob och kabel får gå in i ugnsutrymmet.
+- Separata Shelly-pluggar till diskmaskin, tvättmaskin och torktumlare. Avslutad körning ska i första hand identifieras lokalt från respektive effektprofil: **viloläge → körning → varaktigt låg effekt → klar**. Trösklar och varaktighet måste mätas in per maskin för att undvika falska färdigmeddelanden.
+- En senare notistjänst kan skicka pushmeddelande eller SMS när en maskin bedöms vara klar. Tjänst och leveranssätt är ännu inte valda. Funktionen ska vara övervakande och får inte ge automatisk fjärrstart.
 - Enkel gemensam inköpslista, exempelvis ”mjölken är slut”, med inmatning från mobil eller panel och valbar notis till de vuxna.
 - Kalenderförbättringar efter familjens praktiska användning.
 - Prisvisning och prisstyrning via Tibber, underordnad fas- och säkerhetsgränser.
@@ -176,6 +185,7 @@ Funktionen är avsiktligt försiktig med datakvalitet: om Tibbervärdet är simu
 - Slutlig säkerhetsbedömning av Shelly Plug S Gen3 tillsammans med mikron.
 - Hur matlagningstimrarna ska larma hörbart. Kortets officiella pinout och schema visar ingen summer eller högtalare som ännu kan betraktas som verifierad i vår BOX-enhet.
 - Om MCP9600 kan dela panelens befintliga I²C-buss stabilt vid 100 kHz med touch, RTC och I/O-expander, eller om temperaturdelen ska få en separat anslutning.
+- Val av lokal klardetektering, trösklar och push- eller SMS-tjänst för framtida Shelly-övervakning av diskmaskin, tvättmaskin och torktumlare.
 - Exakt utformning av inköpslista och familjenotiser.
 - Fullständigt stöd för enskilda flyttade eller inställda kalenderförekomster i återkommande serier (`EXDATE`/`RECURRENCE-ID`).
 

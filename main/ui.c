@@ -11,6 +11,7 @@
 
 #include "app_time.h"
 #include "calendar_source.h"
+#include "cooking_timers.h"
 #include "lastvakt_fonts.h"
 #include "microwave_guard.h"
 #include "network_setup.h"
@@ -34,12 +35,22 @@ typedef enum {
     LOAD_ZONE_RED,
 } load_zone_t;
 
+typedef enum {
+    UI_VIEW_CLOCK,
+    UI_VIEW_PHASE,
+    UI_VIEW_CALENDAR,
+    UI_VIEW_STATUS,
+    UI_VIEW_SHELLY,
+    UI_VIEW_COOKING,
+} ui_view_t;
+
 typedef struct {
     lv_obj_t *clock_view;
     lv_obj_t *phase_view;
     lv_obj_t *calendar_view;
     lv_obj_t *status_view;
     lv_obj_t *shelly_view;
+    lv_obj_t *cooking_view;
     lv_obj_t *clock_large;
     lv_obj_t *clock_small;
     lv_obj_t *calendar_clock;
@@ -93,13 +104,36 @@ typedef struct {
     lv_obj_t *shelly_confirm_question;
     lv_obj_t *shelly_confirm_button;
     lv_obj_t *shelly_confirm_button_label;
+    lv_obj_t *cooking_clock;
+    lv_obj_t *cooking_phase_source;
+    lv_obj_t *cooking_phase_card[3];
+    lv_obj_t *cooking_phase_amp[3];
+    lv_obj_t *cooking_timer_card[COOKING_TIMER_COUNT];
+    lv_obj_t *cooking_timer_time[COOKING_TIMER_COUNT];
+    lv_obj_t *cooking_timer_state[COOKING_TIMER_COUNT];
+    lv_obj_t *cooking_editor_overlay;
+    lv_obj_t *cooking_editor_title;
+    lv_obj_t *cooking_editor_time;
+    lv_obj_t *cooking_editor_hint;
+    lv_obj_t *cooking_editor_action;
+    lv_obj_t *cooking_editor_action_label;
+    lv_obj_t *cooking_editor_adjust[4];
+    lv_obj_t *cooking_editor_reset;
+    lv_obj_t *timer_alarm_border;
+    lv_obj_t *timer_alarm_button;
+    lv_obj_t *timer_alarm_label;
     char qr_url[40];
     bool phase_visible;
+    bool timer_alarm_blink_on;
     bool shelly_confirm_target;
     bool shelly_hold_triggered;
     int64_t shelly_hold_started_ms;
     int64_t last_over_threshold_ms;
     int64_t manual_phase_until_ms;
+    size_t cooking_editor_index;
+    ui_view_t active_view;
+    ui_view_t phase_return_view;
+    cooking_timers_t cooking_timers;
 } ui_state_t;
 
 static ui_state_t s_ui;
@@ -537,55 +571,80 @@ static lv_obj_t *make_button(lv_obj_t *parent, const char *text, lv_event_cb_t c
     return button;
 }
 
+static lv_obj_t *view_object(ui_view_t view)
+{
+    switch (view) {
+        case UI_VIEW_PHASE:
+            return s_ui.phase_view;
+        case UI_VIEW_CALENDAR:
+            return s_ui.calendar_view;
+        case UI_VIEW_STATUS:
+            return s_ui.status_view;
+        case UI_VIEW_SHELLY:
+            return s_ui.shelly_view;
+        case UI_VIEW_COOKING:
+            return s_ui.cooking_view;
+        case UI_VIEW_CLOCK:
+        default:
+            return s_ui.clock_view;
+    }
+}
+
+static void show_view(ui_view_t view)
+{
+    lv_obj_t *views[] = {
+        s_ui.clock_view,
+        s_ui.phase_view,
+        s_ui.calendar_view,
+        s_ui.status_view,
+        s_ui.shelly_view,
+        s_ui.cooking_view,
+    };
+    for (size_t i = 0; i < sizeof(views) / sizeof(views[0]); ++i) {
+        lv_obj_add_flag(views[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_clear_flag(view_object(view), LV_OBJ_FLAG_HIDDEN);
+    s_ui.active_view = view;
+    s_ui.phase_visible = view == UI_VIEW_PHASE;
+}
+
 static void show_phase_view(bool show)
 {
-    s_ui.phase_visible = show;
     if (show) {
-        lv_obj_add_flag(s_ui.clock_view, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_ui.calendar_view, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_ui.status_view, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_ui.shelly_view, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(s_ui.phase_view, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(s_ui.phase_view, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_ui.calendar_view, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_ui.status_view, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_ui.shelly_view, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(s_ui.clock_view, LV_OBJ_FLAG_HIDDEN);
+        if (s_ui.active_view != UI_VIEW_PHASE) {
+            s_ui.phase_return_view = s_ui.active_view;
+        }
+        show_view(UI_VIEW_PHASE);
+        return;
     }
+
+    ui_view_t return_view = s_ui.phase_return_view;
+    if (return_view == UI_VIEW_PHASE) return_view = UI_VIEW_CLOCK;
+    show_view(return_view);
 }
 
 static void show_calendar_view(void)
 {
-    s_ui.phase_visible = false;
     s_ui.manual_phase_until_ms = 0;
-    lv_obj_add_flag(s_ui.clock_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_ui.phase_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_ui.status_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_ui.shelly_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(s_ui.calendar_view, LV_OBJ_FLAG_HIDDEN);
+    show_view(UI_VIEW_CALENDAR);
 }
 
 static void show_status_view(void)
 {
-    s_ui.phase_visible = false;
     s_ui.manual_phase_until_ms = 0;
-    lv_obj_add_flag(s_ui.clock_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_ui.phase_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_ui.calendar_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_ui.shelly_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(s_ui.status_view, LV_OBJ_FLAG_HIDDEN);
+    show_view(UI_VIEW_STATUS);
 }
 
 static void show_shelly_view(void)
 {
-    s_ui.phase_visible = false;
     s_ui.manual_phase_until_ms = 0;
-    lv_obj_add_flag(s_ui.clock_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_ui.phase_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_ui.calendar_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_ui.status_view, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(s_ui.shelly_view, LV_OBJ_FLAG_HIDDEN);
+    show_view(UI_VIEW_SHELLY);
+}
+
+static void show_cooking_view(void)
+{
+    s_ui.manual_phase_until_ms = 0;
+    show_view(UI_VIEW_COOKING);
 }
 
 static void view_button_event(lv_event_t *event)
@@ -610,7 +669,7 @@ static void calendar_panel_event(lv_event_t *event)
 static void calendar_back_event(lv_event_t *event)
 {
     (void)event;
-    show_phase_view(false);
+    show_view(UI_VIEW_CLOCK);
 }
 
 static void status_panel_event(lv_event_t *event)
@@ -622,7 +681,7 @@ static void status_panel_event(lv_event_t *event)
 static void status_back_event(lv_event_t *event)
 {
     (void)event;
-    show_phase_view(false);
+    show_view(UI_VIEW_CLOCK);
 }
 
 static void shelly_panel_event(lv_event_t *event)
@@ -635,7 +694,20 @@ static void shelly_back_event(lv_event_t *event)
 {
     (void)event;
     lv_obj_add_flag(s_ui.shelly_confirm_overlay, LV_OBJ_FLAG_HIDDEN);
-    show_phase_view(false);
+    show_view(UI_VIEW_CLOCK);
+}
+
+static void cooking_panel_event(lv_event_t *event)
+{
+    (void)event;
+    show_cooking_view();
+}
+
+static void cooking_back_event(lv_event_t *event)
+{
+    (void)event;
+    lv_obj_add_flag(s_ui.cooking_editor_overlay, LV_OBJ_FLAG_HIDDEN);
+    show_view(UI_VIEW_CLOCK);
 }
 
 static void shelly_cancel_event(lv_event_t *event)
@@ -816,8 +888,13 @@ static void create_clock_view(lv_obj_t *root)
     lv_label_set_text(s_ui.load_value, "L1  0,0 A");
     lv_obj_align(s_ui.load_value, LV_ALIGN_RIGHT_MID, -170, 4);
 
-    lv_obj_t *button = make_button(s_ui.load_panel, "Visa faser", view_button_event);
-    lv_obj_align(button, LV_ALIGN_RIGHT_MID, -22, 0);
+    lv_obj_t *phase_button = make_button(s_ui.load_panel, "Faser", view_button_event);
+    lv_obj_set_size(phase_button, 126, 40);
+    lv_obj_align(phase_button, LV_ALIGN_TOP_RIGHT, -22, 14);
+
+    lv_obj_t *cooking_button = make_button(s_ui.load_panel, "Laga mat", cooking_panel_event);
+    lv_obj_set_size(cooking_button, 126, 40);
+    lv_obj_align(cooking_button, LV_ALIGN_BOTTOM_RIGHT, -22, -14);
 }
 
 static void create_phase_row(lv_obj_t *parent, int index, int y, uint32_t color)
@@ -878,7 +955,7 @@ static void create_phase_view(lv_obj_t *root)
     lv_label_set_text(s_ui.phase_alert_status, "Gott om marginal");
     lv_obj_align(s_ui.phase_alert_status, LV_ALIGN_TOP_RIGHT, -186, 57);
 
-    lv_obj_t *button = make_button(s_ui.phase_view, "Klocka", view_button_event);
+    lv_obj_t *button = make_button(s_ui.phase_view, "Tillbaka", view_button_event);
     lv_obj_align(button, LV_ALIGN_TOP_RIGHT, -36, 17);
 
     create_phase_row(s_ui.phase_view, 0, 94, COLOR_MINT);
@@ -1181,6 +1258,387 @@ static void create_shelly_view(lv_obj_t *root)
     lv_obj_add_flag(s_ui.shelly_confirm_overlay, LV_OBJ_FLAG_HIDDEN);
 }
 
+static void format_timer_duration(char *buffer, size_t buffer_size, int64_t remaining_ms)
+{
+    int64_t total_seconds = remaining_ms > 0 ? (remaining_ms + 999) / 1000 : 0;
+    const int64_t hours = total_seconds / 3600;
+    const int64_t minutes = (total_seconds / 60) % 60;
+    const int64_t seconds = total_seconds % 60;
+    snprintf(
+        buffer,
+        buffer_size,
+        "%02lld:%02lld:%02lld",
+        (long long)hours,
+        (long long)minutes,
+        (long long)seconds);
+}
+
+static const char *cooking_timer_state_text(cooking_timer_state_t state)
+{
+    switch (state) {
+        case COOKING_TIMER_READY:
+            return "REDO ATT STARTA";
+        case COOKING_TIMER_RUNNING:
+            return "PÅGÅR";
+        case COOKING_TIMER_PAUSED:
+            return "PAUSAD";
+        case COOKING_TIMER_FINISHED:
+            return "KLAR • KVITTERA";
+        case COOKING_TIMER_IDLE:
+        default:
+            return "TRYCK FÖR ATT STÄLLA IN";
+    }
+}
+
+static uint32_t cooking_timer_state_color(cooking_timer_state_t state)
+{
+    switch (state) {
+        case COOKING_TIMER_READY:
+            return COLOR_CYAN;
+        case COOKING_TIMER_RUNNING:
+            return COLOR_MINT;
+        case COOKING_TIMER_PAUSED:
+            return COLOR_WARNING;
+        case COOKING_TIMER_FINISHED:
+            return COLOR_CYAN;
+        case COOKING_TIMER_IDLE:
+        default:
+            return COLOR_MUTED;
+    }
+}
+
+static void update_cooking_timer_widgets(int64_t now_ms)
+{
+    for (size_t i = 0; i < COOKING_TIMER_COUNT; ++i) {
+        const cooking_timer_slot_t *slot = &s_ui.cooking_timers.slots[i];
+        char time_text[24];
+        format_timer_duration(
+            time_text,
+            sizeof(time_text),
+            cooking_timer_remaining_ms(&s_ui.cooking_timers, i, now_ms));
+        lv_label_set_text(s_ui.cooking_timer_time[i], time_text);
+        lv_label_set_text(s_ui.cooking_timer_state[i], cooking_timer_state_text(slot->state));
+        const uint32_t color = cooking_timer_state_color(slot->state);
+        lv_obj_set_style_text_color(s_ui.cooking_timer_time[i], lv_color_hex(color), LV_PART_MAIN);
+        lv_obj_set_style_text_color(s_ui.cooking_timer_state[i], lv_color_hex(color), LV_PART_MAIN);
+        lv_obj_set_style_border_width(
+            s_ui.cooking_timer_card[i],
+            slot->state == COOKING_TIMER_IDLE ? 1 : 2,
+            LV_PART_MAIN);
+        lv_obj_set_style_border_color(s_ui.cooking_timer_card[i], lv_color_hex(color), LV_PART_MAIN);
+    }
+
+    const size_t index = s_ui.cooking_editor_index;
+    if (index >= COOKING_TIMER_COUNT ||
+        lv_obj_has_flag(s_ui.cooking_editor_overlay, LV_OBJ_FLAG_HIDDEN)) {
+        return;
+    }
+
+    const cooking_timer_slot_t *slot = &s_ui.cooking_timers.slots[index];
+    char title[24];
+    char time_text[24];
+    snprintf(title, sizeof(title), "Timer %u", (unsigned)(index + 1));
+    format_timer_duration(
+        time_text,
+        sizeof(time_text),
+        cooking_timer_remaining_ms(&s_ui.cooking_timers, index, now_ms));
+    lv_label_set_text(s_ui.cooking_editor_title, title);
+    lv_label_set_text(s_ui.cooking_editor_time, time_text);
+
+    const bool can_adjust = slot->state != COOKING_TIMER_RUNNING &&
+                            slot->state != COOKING_TIMER_FINISHED;
+    for (size_t i = 0; i < sizeof(s_ui.cooking_editor_adjust) /
+                               sizeof(s_ui.cooking_editor_adjust[0]);
+         ++i) {
+        if (can_adjust) lv_obj_clear_state(s_ui.cooking_editor_adjust[i], LV_STATE_DISABLED);
+        else lv_obj_add_state(s_ui.cooking_editor_adjust[i], LV_STATE_DISABLED);
+    }
+
+    if (slot->state == COOKING_TIMER_RUNNING) {
+        lv_label_set_text(s_ui.cooking_editor_hint, "Timern fortsätter även när du lämnar sidan.");
+        lv_label_set_text(s_ui.cooking_editor_action_label, "Pausa");
+        lv_obj_clear_state(s_ui.cooking_editor_action, LV_STATE_DISABLED);
+    } else if (slot->state == COOKING_TIMER_PAUSED) {
+        lv_label_set_text(s_ui.cooking_editor_hint, "Ändra tiden eller fortsätt nedräkningen.");
+        lv_label_set_text(s_ui.cooking_editor_action_label, "Fortsätt");
+        lv_obj_clear_state(s_ui.cooking_editor_action, LV_STATE_DISABLED);
+    } else if (slot->state == COOKING_TIMER_FINISHED) {
+        lv_label_set_text(s_ui.cooking_editor_hint, "Timern är klar.");
+        lv_label_set_text(s_ui.cooking_editor_action_label, "Kvittera");
+        lv_obj_clear_state(s_ui.cooking_editor_action, LV_STATE_DISABLED);
+    } else {
+        lv_label_set_text(s_ui.cooking_editor_hint, "Ställ timmar och minuter, tryck sedan Starta.");
+        lv_label_set_text(s_ui.cooking_editor_action_label, "Starta");
+        if (slot->remaining_ms > 0) lv_obj_clear_state(s_ui.cooking_editor_action, LV_STATE_DISABLED);
+        else lv_obj_add_state(s_ui.cooking_editor_action, LV_STATE_DISABLED);
+    }
+
+    if (slot->state == COOKING_TIMER_IDLE) lv_obj_add_state(s_ui.cooking_editor_reset, LV_STATE_DISABLED);
+    else lv_obj_clear_state(s_ui.cooking_editor_reset, LV_STATE_DISABLED);
+}
+
+static void cooking_timer_card_event(lv_event_t *event)
+{
+    s_ui.cooking_editor_index = (size_t)(uintptr_t)lv_event_get_user_data(event);
+    lv_obj_clear_flag(s_ui.cooking_editor_overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(s_ui.cooking_editor_overlay);
+    update_cooking_timer_widgets(esp_timer_get_time() / 1000);
+}
+
+static void cooking_editor_close_event(lv_event_t *event)
+{
+    (void)event;
+    lv_obj_add_flag(s_ui.cooking_editor_overlay, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void cooking_editor_adjust_event(lv_event_t *event)
+{
+    const lv_event_code_t code = lv_event_get_code(event);
+    if (code != LV_EVENT_SHORT_CLICKED &&
+        code != LV_EVENT_LONG_PRESSED &&
+        code != LV_EVENT_LONG_PRESSED_REPEAT) {
+        return;
+    }
+
+    const int32_t delta_seconds = (int32_t)(intptr_t)lv_event_get_user_data(event);
+    const int64_t now_ms = esp_timer_get_time() / 1000;
+    cooking_timer_adjust(
+        &s_ui.cooking_timers,
+        s_ui.cooking_editor_index,
+        delta_seconds,
+        now_ms);
+    update_cooking_timer_widgets(now_ms);
+}
+
+static void cooking_editor_action_event(lv_event_t *event)
+{
+    (void)event;
+    const int64_t now_ms = esp_timer_get_time() / 1000;
+    cooking_timer_slot_t *slot = &s_ui.cooking_timers.slots[s_ui.cooking_editor_index];
+    if (slot->state == COOKING_TIMER_FINISHED) {
+        cooking_timer_reset(&s_ui.cooking_timers, s_ui.cooking_editor_index);
+    } else {
+        cooking_timer_toggle(&s_ui.cooking_timers, s_ui.cooking_editor_index, now_ms);
+    }
+    update_cooking_timer_widgets(now_ms);
+}
+
+static void cooking_editor_reset_event(lv_event_t *event)
+{
+    (void)event;
+    cooking_timer_reset(&s_ui.cooking_timers, s_ui.cooking_editor_index);
+    update_cooking_timer_widgets(esp_timer_get_time() / 1000);
+}
+
+static void timer_alarm_ack_event(lv_event_t *event)
+{
+    (void)event;
+    cooking_timers_acknowledge_finished(&s_ui.cooking_timers);
+    lv_obj_add_flag(s_ui.timer_alarm_border, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.timer_alarm_button, LV_OBJ_FLAG_HIDDEN);
+    update_cooking_timer_widgets(esp_timer_get_time() / 1000);
+}
+
+static lv_obj_t *make_timer_adjust_button(
+    lv_obj_t *parent,
+    const char *text,
+    int32_t delta_seconds)
+{
+    lv_obj_t *button = lv_btn_create(parent);
+    lv_obj_set_size(button, 138, 50);
+    lv_obj_set_style_bg_color(button, lv_color_hex(COLOR_PANEL_LIGHT), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(button, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(button, lv_color_hex(0x274158), LV_PART_MAIN);
+    lv_obj_set_style_radius(button, 18, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(button, 0, LV_PART_MAIN);
+    lv_obj_add_event_cb(
+        button,
+        cooking_editor_adjust_event,
+        LV_EVENT_ALL,
+        (void *)(intptr_t)delta_seconds);
+    lv_obj_t *label = make_label(button, &lv_font_lastvakt_16, COLOR_TEXT);
+    lv_label_set_text(label, text);
+    lv_obj_center(label);
+    return button;
+}
+
+static void create_cooking_phase_cell(lv_obj_t *parent, int index, int x)
+{
+    s_ui.cooking_phase_card[index] = lv_obj_create(parent);
+    lv_obj_set_size(s_ui.cooking_phase_card[index], 220, 50);
+    lv_obj_set_pos(s_ui.cooking_phase_card[index], x, 71);
+    style_panel(s_ui.cooking_phase_card[index], COLOR_PANEL, 16);
+    lv_obj_set_style_border_width(s_ui.cooking_phase_card[index], 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_ui.cooking_phase_card[index], lv_color_hex(COLOR_MINT), LV_PART_MAIN);
+
+    s_ui.cooking_phase_amp[index] = make_label(
+        s_ui.cooking_phase_card[index],
+        &lv_font_lastvakt_20,
+        COLOR_MINT);
+    char initial[20];
+    snprintf(initial, sizeof(initial), "L%d  0,0 A", index + 1);
+    lv_label_set_text(s_ui.cooking_phase_amp[index], initial);
+    lv_obj_center(s_ui.cooking_phase_amp[index]);
+}
+
+static void create_cooking_timer_card(lv_obj_t *parent, size_t index, int x, int y)
+{
+    lv_obj_t *card = lv_obj_create(parent);
+    s_ui.cooking_timer_card[index] = card;
+    lv_obj_set_size(card, 350, 140);
+    lv_obj_set_pos(card, x, y);
+    style_panel(card, COLOR_PANEL, 20);
+    lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(card, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
+    lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_color(card, lv_color_hex(COLOR_PANEL_LIGHT), LV_STATE_PRESSED);
+    lv_obj_add_event_cb(card, cooking_timer_card_event, LV_EVENT_CLICKED, (void *)(uintptr_t)index);
+
+    lv_obj_t *title = make_label(card, &lv_font_lastvakt_16, COLOR_TEXT);
+    char title_text[20];
+    snprintf(title_text, sizeof(title_text), "TIMER %u", (unsigned)(index + 1));
+    lv_label_set_text(title, title_text);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 18, 13);
+
+    lv_obj_t *open_hint = make_label(card, &lv_font_lastvakt_12, COLOR_CYAN);
+    lv_label_set_text(open_hint, "ÖPPNA");
+    lv_obj_align(open_hint, LV_ALIGN_TOP_RIGHT, -18, 16);
+
+    s_ui.cooking_timer_time[index] = make_label(card, &lv_font_lastvakt_48, COLOR_MUTED);
+    lv_label_set_text(s_ui.cooking_timer_time[index], "00:00:00");
+    lv_obj_align(s_ui.cooking_timer_time[index], LV_ALIGN_TOP_MID, 0, 43);
+
+    s_ui.cooking_timer_state[index] = make_label(card, &lv_font_lastvakt_12, COLOR_MUTED);
+    lv_label_set_text(s_ui.cooking_timer_state[index], "TRYCK FÖR ATT STÄLLA IN");
+    lv_obj_align(s_ui.cooking_timer_state[index], LV_ALIGN_BOTTOM_MID, 0, -10);
+}
+
+static void create_cooking_editor(lv_obj_t *parent)
+{
+    s_ui.cooking_editor_overlay = lv_obj_create(parent);
+    lv_obj_set_size(s_ui.cooking_editor_overlay, 800, 356);
+    lv_obj_set_pos(s_ui.cooking_editor_overlay, 0, 124);
+    lv_obj_set_style_bg_color(s_ui.cooking_editor_overlay, lv_color_hex(0x000000), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_ui.cooking_editor_overlay, LV_OPA_70, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_ui.cooking_editor_overlay, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_ui.cooking_editor_overlay, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(s_ui.cooking_editor_overlay, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *dialog = lv_obj_create(s_ui.cooking_editor_overlay);
+    lv_obj_set_size(dialog, 700, 330);
+    lv_obj_center(dialog);
+    style_panel(dialog, COLOR_PANEL, 24);
+    lv_obj_set_style_border_width(dialog, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(dialog, lv_color_hex(COLOR_CYAN), LV_PART_MAIN);
+
+    s_ui.cooking_editor_title = make_label(dialog, &lv_font_lastvakt_20, COLOR_TEXT);
+    lv_label_set_text(s_ui.cooking_editor_title, "Timer 1");
+    lv_obj_align(s_ui.cooking_editor_title, LV_ALIGN_TOP_MID, 0, 13);
+
+    s_ui.cooking_editor_time = make_label(dialog, &lv_font_lastvakt_48, COLOR_CYAN);
+    lv_label_set_text(s_ui.cooking_editor_time, "00:00:00");
+    lv_obj_align(s_ui.cooking_editor_time, LV_ALIGN_TOP_MID, 0, 43);
+
+    s_ui.cooking_editor_hint = make_label(dialog, &lv_font_lastvakt_16, COLOR_MUTED);
+    lv_obj_set_width(s_ui.cooking_editor_hint, 620);
+    lv_obj_set_style_text_align(s_ui.cooking_editor_hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_label_set_text(s_ui.cooking_editor_hint, "Ställ timmar och minuter, tryck sedan Starta.");
+    lv_obj_align(s_ui.cooking_editor_hint, LV_ALIGN_TOP_MID, 0, 101);
+
+    static const char *adjust_text[] = {"- 1 h", "+ 1 h", "- 1 min", "+ 1 min"};
+    static const int32_t adjust_seconds[] = {-3600, 3600, -60, 60};
+    for (size_t i = 0; i < 4; ++i) {
+        s_ui.cooking_editor_adjust[i] = make_timer_adjust_button(
+            dialog,
+            adjust_text[i],
+            adjust_seconds[i]);
+        lv_obj_set_pos(s_ui.cooking_editor_adjust[i], 46 + (int)i * 154, 139);
+    }
+
+    s_ui.cooking_editor_reset = make_button(dialog, "Nollställ", cooking_editor_reset_event);
+    lv_obj_set_size(s_ui.cooking_editor_reset, 180, 52);
+    lv_obj_align(s_ui.cooking_editor_reset, LV_ALIGN_BOTTOM_LEFT, 40, -25);
+
+    s_ui.cooking_editor_action = make_button(dialog, "Starta", cooking_editor_action_event);
+    lv_obj_set_size(s_ui.cooking_editor_action, 200, 52);
+    lv_obj_align(s_ui.cooking_editor_action, LV_ALIGN_BOTTOM_MID, 0, -25);
+    s_ui.cooking_editor_action_label = lv_obj_get_child(s_ui.cooking_editor_action, 0);
+
+    lv_obj_t *close = make_button(dialog, "Stäng", cooking_editor_close_event);
+    lv_obj_set_size(close, 180, 52);
+    lv_obj_align(close, LV_ALIGN_BOTTOM_RIGHT, -40, -25);
+
+    lv_obj_add_flag(s_ui.cooking_editor_overlay, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void create_cooking_view(lv_obj_t *root)
+{
+    s_ui.cooking_view = lv_obj_create(root);
+    lv_obj_set_size(s_ui.cooking_view, 800, 480);
+    lv_obj_center(s_ui.cooking_view);
+    style_panel(s_ui.cooking_view, COLOR_BG, 0);
+
+    lv_obj_t *title = make_label(s_ui.cooking_view, &lv_font_lastvakt_24, COLOR_TEXT);
+    lv_label_set_text(title, "Laga mat");
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 36, 21);
+
+    s_ui.cooking_phase_source = make_label(s_ui.cooking_view, &lv_font_lastvakt_12, COLOR_CYAN);
+    lv_label_set_text(s_ui.cooking_phase_source, "TIBBER LIVE");
+    lv_obj_align(s_ui.cooking_phase_source, LV_ALIGN_TOP_LEFT, 171, 31);
+
+    s_ui.cooking_clock = make_label(s_ui.cooking_view, &lv_font_lastvakt_20, COLOR_TEXT);
+    lv_label_set_text(s_ui.cooking_clock, "--:--");
+    lv_obj_align(s_ui.cooking_clock, LV_ALIGN_TOP_RIGHT, -177, 26);
+
+    lv_obj_t *back = make_button(s_ui.cooking_view, "Tillbaka", cooking_back_event);
+    lv_obj_align(back, LV_ALIGN_TOP_RIGHT, -36, 12);
+
+    create_cooking_phase_cell(s_ui.cooking_view, 0, 36);
+    create_cooking_phase_cell(s_ui.cooking_view, 1, 290);
+    create_cooking_phase_cell(s_ui.cooking_view, 2, 544);
+
+    create_cooking_timer_card(s_ui.cooking_view, 0, 36, 134);
+    create_cooking_timer_card(s_ui.cooking_view, 1, 414, 134);
+    create_cooking_timer_card(s_ui.cooking_view, 2, 36, 295);
+    create_cooking_timer_card(s_ui.cooking_view, 3, 414, 295);
+
+    create_cooking_editor(s_ui.cooking_view);
+}
+
+static void create_timer_alarm(lv_obj_t *root)
+{
+    s_ui.timer_alarm_border = lv_obj_create(root);
+    lv_obj_set_size(s_ui.timer_alarm_border, 800, 480);
+    lv_obj_set_pos(s_ui.timer_alarm_border, 0, 0);
+    lv_obj_set_style_bg_color(s_ui.timer_alarm_border, lv_color_hex(COLOR_CYAN), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_ui.timer_alarm_border, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_ui.timer_alarm_border, 9, LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_ui.timer_alarm_border, lv_color_hex(COLOR_CYAN), LV_PART_MAIN);
+    lv_obj_set_style_radius(s_ui.timer_alarm_border, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(s_ui.timer_alarm_border, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(s_ui.timer_alarm_border, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_ui.timer_alarm_border, LV_OBJ_FLAG_CLICKABLE);
+
+    s_ui.timer_alarm_button = lv_btn_create(root);
+    lv_obj_set_size(s_ui.timer_alarm_button, 560, 58);
+    lv_obj_align(s_ui.timer_alarm_button, LV_ALIGN_BOTTOM_MID, 0, -14);
+    lv_obj_set_style_bg_color(s_ui.timer_alarm_button, lv_color_hex(COLOR_CYAN), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_ui.timer_alarm_button, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_ui.timer_alarm_button, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_ui.timer_alarm_button, lv_color_hex(COLOR_TEXT), LV_PART_MAIN);
+    lv_obj_set_style_radius(s_ui.timer_alarm_button, 22, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(s_ui.timer_alarm_button, 0, LV_PART_MAIN);
+    lv_obj_add_event_cb(s_ui.timer_alarm_button, timer_alarm_ack_event, LV_EVENT_CLICKED, NULL);
+
+    s_ui.timer_alarm_label = make_label(s_ui.timer_alarm_button, &lv_font_lastvakt_16, COLOR_BG);
+    lv_label_set_text(s_ui.timer_alarm_label, "TIMER KLAR • TRYCK FÖR ATT KVITTERA");
+    lv_obj_center(s_ui.timer_alarm_label);
+
+    lv_obj_add_flag(s_ui.timer_alarm_border, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_ui.timer_alarm_button, LV_OBJ_FLAG_HIDDEN);
+}
+
 static int highest_phase(const phase_sample_t *sample)
 {
     int highest = 0;
@@ -1206,9 +1664,84 @@ static uint32_t shelly_mode_color(const shelly_sample_t *sample)
     return COLOR_MINT;
 }
 
+static void update_timer_alarm(int64_t now_ms)
+{
+    const uint32_t finished_mask = cooking_timers_finished_mask(&s_ui.cooking_timers);
+    if (finished_mask == 0) {
+        lv_obj_add_flag(s_ui.timer_alarm_border, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_ui.timer_alarm_button, LV_OBJ_FLAG_HIDDEN);
+        s_ui.timer_alarm_blink_on = false;
+        return;
+    }
+
+    unsigned finished_count = 0;
+    unsigned first_timer = 0;
+    for (size_t i = 0; i < COOKING_TIMER_COUNT; ++i) {
+        if ((finished_mask & ((uint32_t)1U << i)) != 0) {
+            if (finished_count == 0) first_timer = (unsigned)i + 1;
+            ++finished_count;
+        }
+    }
+
+    char alarm_text[64];
+    if (finished_count == 1) {
+        snprintf(
+            alarm_text,
+            sizeof(alarm_text),
+            "TIMER %u KLAR • TRYCK FÖR ATT KVITTERA",
+            first_timer);
+    } else {
+        snprintf(
+            alarm_text,
+            sizeof(alarm_text),
+            "%u TIMRAR KLARA • TRYCK FÖR ATT KVITTERA",
+            finished_count);
+    }
+    lv_label_set_text(s_ui.timer_alarm_label, alarm_text);
+
+    const bool blink_on = ((now_ms / 500) & 1) == 0;
+    if (blink_on != s_ui.timer_alarm_blink_on ||
+        lv_obj_has_flag(s_ui.timer_alarm_border, LV_OBJ_FLAG_HIDDEN)) {
+        s_ui.timer_alarm_blink_on = blink_on;
+        const uint32_t blink_color = blink_on ? COLOR_TEXT : COLOR_CYAN;
+        lv_obj_set_style_border_color(
+            s_ui.timer_alarm_border,
+            lv_color_hex(blink_color),
+            LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(
+            s_ui.timer_alarm_border,
+            blink_on ? LV_OPA_20 : LV_OPA_TRANSP,
+            LV_PART_MAIN);
+        lv_obj_set_style_bg_color(
+            s_ui.timer_alarm_button,
+            lv_color_hex(blink_color),
+            LV_PART_MAIN);
+        lv_obj_set_style_text_color(s_ui.timer_alarm_label, lv_color_hex(COLOR_BG), LV_PART_MAIN);
+    }
+
+    for (size_t i = 0; i < COOKING_TIMER_COUNT; ++i) {
+        if ((finished_mask & ((uint32_t)1U << i)) != 0) {
+            lv_obj_set_style_border_color(
+                s_ui.cooking_timer_card[i],
+                lv_color_hex(blink_on ? COLOR_TEXT : COLOR_CYAN),
+                LV_PART_MAIN);
+        }
+    }
+
+    lv_obj_clear_flag(s_ui.timer_alarm_border, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_ui.timer_alarm_button, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(s_ui.timer_alarm_border);
+    lv_obj_move_foreground(s_ui.timer_alarm_button);
+}
+
 static void ui_timer(lv_timer_t *timer)
 {
     (void)timer;
+    const int64_t now_ms = esp_timer_get_time() / 1000;
+    cooking_timers_update(&s_ui.cooking_timers, now_ms);
+    update_cooking_timer_widgets(now_ms);
+    update_timer_alarm(now_ms);
+
     char clock_text[16];
     char date_text[64];
     app_time_format(clock_text, sizeof(clock_text), date_text, sizeof(date_text));
@@ -1217,6 +1750,7 @@ static void ui_timer(lv_timer_t *timer)
     lv_label_set_text(s_ui.calendar_clock, clock_text);
     lv_label_set_text(s_ui.status_clock, clock_text);
     lv_label_set_text(s_ui.shelly_clock, clock_text);
+    lv_label_set_text(s_ui.cooking_clock, clock_text);
     lv_label_set_text(s_ui.date, date_text);
 
     weather_sample_t weather = {0};
@@ -1559,8 +2093,6 @@ static void ui_timer(lv_timer_t *timer)
         LV_PART_MAIN);
     const int highest = highest_phase(&sample);
     const load_zone_t highest_zone = load_zone_for_current(sample.current_a[highest], sample.main_fuse_a);
-    const int64_t now_ms = esp_timer_get_time() / 1000;
-
     for (int i = 0; i < 3; ++i) {
         char amps[20];
         char percent[16];
@@ -1583,7 +2115,23 @@ static void ui_timer(lv_timer_t *timer)
         lv_obj_set_style_text_color(s_ui.phase_percent[i], lv_color_hex(zone_color), LV_PART_MAIN);
         lv_obj_set_style_border_width(s_ui.phase_card[i], zone == LOAD_ZONE_GREEN ? 0 : (zone == LOAD_ZONE_RED ? 2 : 1), LV_PART_MAIN);
         lv_obj_set_style_border_color(s_ui.phase_card[i], lv_color_hex(zone_color), LV_PART_MAIN);
+
+        char cooking_phase[28];
+        snprintf(cooking_phase, sizeof(cooking_phase), "L%d  %s", i + 1, amps);
+        lv_label_set_text(s_ui.cooking_phase_amp[i], cooking_phase);
+        lv_obj_set_style_text_color(s_ui.cooking_phase_amp[i], lv_color_hex(zone_color), LV_PART_MAIN);
+        lv_obj_set_style_border_color(s_ui.cooking_phase_card[i], lv_color_hex(zone_color), LV_PART_MAIN);
+        lv_obj_set_style_border_width(
+            s_ui.cooking_phase_card[i],
+            zone == LOAD_ZONE_GREEN ? 1 : (zone == LOAD_ZONE_RED ? 3 : 2),
+            LV_PART_MAIN);
     }
+
+    lv_label_set_text(s_ui.cooking_phase_source, sample.simulated ? "SIMULERING" : "TIBBER LIVE");
+    lv_obj_set_style_text_color(
+        s_ui.cooking_phase_source,
+        lv_color_hex(sample.simulated ? COLOR_WARNING : COLOR_MINT),
+        LV_PART_MAIN);
 
     char highest_amps[20];
     char load_value[40];
@@ -1623,13 +2171,17 @@ void ui_create(void)
     lv_obj_set_style_bg_color(root, lv_color_hex(COLOR_BG), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(root, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+    cooking_timers_init(&s_ui.cooking_timers);
 
     create_clock_view(root);
     create_phase_view(root);
     create_calendar_view(root);
     create_status_view(root);
     create_shelly_view(root);
-    show_phase_view(false);
+    create_cooking_view(root);
+    create_timer_alarm(root);
+    s_ui.phase_return_view = UI_VIEW_CLOCK;
+    show_view(UI_VIEW_CLOCK);
 
     lv_timer_t *timer = lv_timer_create(ui_timer, 250, NULL);
     ui_timer(timer);

@@ -29,14 +29,19 @@ En frikopplad, datorbaserad referensmodell för framtida tvåstegsstyrning finns
 - Simulerade, saknade eller äldre Tibbervärden får aldrig styra reläet; reläsidan visar då att autoskyddet väntar på färsk data.
 - Simulerade fasvärden används automatiskt tills Tibber är konfigurerat eller om liveflödet är tillfälligt nere.
 - Tydliga belastningszoner: grönt till 10 A, orange till 17,5 A och rött över 17,5 A med 25 A huvudsäkring.
+- Sidan **Laga mat** innehåller fyra generiska, parallella timrar: **TIMER 1** till **TIMER 4**. Varje timer öppnas genom att trycka på sitt kort.
+- Tiden ställs i hela timmar och minuter med knapparna `- 1 h`, `+ 1 h`, `- 1 min` och `+ 1 min`. Knapparna kan hållas inne för upprepad ändring. Timern kan startas, pausas, fortsättas, nollställas och kvitteras när den är klar.
+- Nedräkningen använder ESP32:ans monotona tid, fortsätter oberoende av vilken sida som visas och påverkas därför inte av NTP-korrigeringar. Timrarna ligger endast i RAM och nollställs om panelen startas om.
+- När minst en timer är klar blinkar hela gränssnittet cyan/vitt och visar en kvitteringsknapp. Matlagningssidan behåller samtidigt en kompakt L1/L2/L3-rad med samma gröna, orange och röda belastningszoner som fasvyn.
 - Automatisk fasvy i röd zon och återgång efter åtta sekunder.
-- Manuell växling mellan klocka, kalender och fasvy via pekskärmen.
+- Manuell växling mellan klocka, kalender, matlagning och fasvy via pekskärmen.
 - Lokal installationssida för SSID, Wi-Fi-lösenord, Tibber Personal Access Token, kalenderns hemliga iCal-adress och Shelly-adress.
 
 ## Planerade familjefunktioner
 
 - En enkel gemensam inköpslista med möjlighet att lägga till exempelvis ”mjölk” från mobil eller display.
-- Kontrollerat praktiskt prov av mikrons automatiska frånkoppling samt fortsatt bedömning av Shellyns lämplighet och apparatmanualens begränsning av extern styrning.
+- Separata Shelly-pluggar till diskmaskin, tvättmaskin och torktumlare. En framtida funktion kan tolka varje maskins effektprofil som **viloläge → körning → varaktigt låg effekt → klar** och därefter skicka en notis. Push- eller SMS-tjänst är ännu inte vald. Övervakningen ska inte kunna fjärrstarta någon maskin automatiskt.
+- Fortsatt bedömning av Shelly-pluggens lämplighet för mikron och apparatmanualens begränsning av extern styrning.
 - Pris- och fasstyrd begränsning av elpatronens två effektsteg som ett smart tillägg i serie med den separata COALA-vakten. Verifierade apparatuppgifter och öppna konstruktionsfrågor finns i [HARDWARE-NOTES.md](HARDWARE-NOTES.md).
 
 Kalendern läses skrivskyddat via Googles hemliga iCal-adress. Adressen lagras endast på enheten, aldrig i Git-förrådet eller i loggarna.
@@ -71,7 +76,7 @@ idf.py build
 
 ## Testa styrprincipen utan hårdvara
 
-Referensmodellerna använder endast Pythons standardbibliotek. Testsviten omfattar både den framtida tvåstegsstyrningen för elpatronen och mikrons ensidiga 20 A-skydd:
+Referensmodellerna använder endast Pythons standardbibliotek. Testsviten omfattar den framtida tvåstegsstyrningen för elpatronen, mikrons ensidiga 20 A-skydd och matlagningstimrarnas tillstånd och monotona nedräkning:
 
 ```powershell
 python -m unittest discover -s tests -v
@@ -109,6 +114,7 @@ De tre färdiga bilderna ligger även i `firmware/` och har följande offset:
 
 - `main/network_setup.c` – Wi-Fi, NVS och den lokala installationssidan.
 - `main/calendar_source.c` – hämtar, tolkar och sorterar kommande kalenderhändelser från privat iCal.
+- `main/cooking_timers.c` – håller fyra parallella matlagningstimrar med monoton tid, paus, återstart och kvittering.
 - `main/weather_source.c` – hämtar aktuellt väder för Älvsjö och behåller senaste värdet vid tillfälliga anslutningsfel.
 - `main/shelly_client.c` – hämtar reläläge och elmätvärden och verkställer bekräftade reläkommandon i bakgrunden på det lokala nätverket.
 - `main/microwave_guard.c` – övervakar färsk L1-data och kan endast begära automatisk frånkoppling av mikron; den begär aldrig tillkoppling.
