@@ -286,14 +286,22 @@ esp_err_t tibber_client_start(void)
     return xTaskCreate(tibber_task, "tibber", 9216, NULL, 4, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
-bool tibber_client_read(float current_a[3])
+bool tibber_client_read_with_age(float current_a[3], int64_t *age_ms)
 {
     bool valid;
     portENTER_CRITICAL(&s_lock);
-    valid = s_last_sample_us > 0 && esp_timer_get_time() - s_last_sample_us < LIVE_MAX_AGE_US;
+    const int64_t last_sample_us = s_last_sample_us;
+    const int64_t age_us = last_sample_us > 0 ? esp_timer_get_time() - last_sample_us : -1;
+    valid = last_sample_us > 0 && age_us >= 0 && age_us < LIVE_MAX_AGE_US;
     if (valid) memcpy(current_a, s_current, sizeof(s_current));
+    if (age_ms != NULL) *age_ms = valid ? age_us / 1000 : -1;
     portEXIT_CRITICAL(&s_lock);
     return valid;
+}
+
+bool tibber_client_read(float current_a[3])
+{
+    return tibber_client_read_with_age(current_a, NULL);
 }
 
 const char *tibber_client_status_text(void)

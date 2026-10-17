@@ -1,5 +1,50 @@
 # Hårdvarunoteringar
 
+## 2026-10-17 – Mikrovågsugn och Shelly Plug S Gen3
+
+Den installerade mikrovågsugnen är en **IKEA RAFFINERAD**. Apparatens egen typskylt anger **2100 W**. Den generella RAFFINERAD-manualen anger 2300 W märkeffekt, 1000 W mikrovågseffekt och 800 W grill; den enhetsspecifika typskylten används därför som märkdata för just denna apparat. Mikrovågseffekten 1000 W är avgiven effekt till maten och ska inte förväxlas med elektrisk ineffekt.
+
+Shelly Plug S Gen3 flyttades 2026-10-17 till mikrons verkliga uttag på L1 och mättes direkt över det lokala RPC-gränssnittet. Reläet ändrades inte av mätningen. Under ett kort prov på full mikrovågseffekt med vatten registrerades:
+
+- stabil aktiv effekt huvudsakligen omkring **1713–1731 W**;
+- högsta observerade effekt **1741,8 W**;
+- högsta observerade ström **7,913 A**;
+- lägsta observerade spänning **235,3 V**;
+- Shellyns interna temperatur från **43,4 °C** före provet till högst **44,2 °C**;
+- efter huvudlasten cirka **26,6–26,7 W** under knappt en minut innan 0 W, sannolikt apparatens eftergång/kylning.
+
+Ett andra, längre temperaturprov genomfördes samma dag med en liter kallt vatten och full mikrovågseffekt i **186 sekunder**. Då registrerades:
+
+- högsta observerade effekt **1723,4 W** och ström **7,816 A**;
+- lägsta spänning **235,3 V**;
+- en långsam effektsänkning från ungefär 1720 W till 1640 W under körningen;
+- intern Shellytemperatur **44,3 °C** före start, **46,6 °C** vid stopp och högst **46,7 °C** två minuter efter stopp;
+- ungefärlig uppmätt energi **87,7 Wh**.
+
+Temperaturökningen i det andra provet var alltså **2,4 °C**. Omedelbart efter provet kontrollerade användaren Shellyhöljet, stickpropparna och vägguttagets framsida för hand; samtliga upplevdes som **rumstempererade**. Den kontrollen visade ingen märkbar lokal uppvärmning, men är en praktisk observation och inte en kalibrerad temperaturmätning.
+
+Avläsningen gjordes ungefär fyra gånger per sekund och gav några enstaka läsfel utan att den sammanhängande belastningskurvan förlorades. Resultaten beskriver den observerade driften men fångar inte säkert mycket korta startströmmar och utgör inte ensamma ett godkännande för permanent användning. Shelly anger 12 A och 2500 W för resistiv last; en mikrovågsugn är inte en rent resistiv last.
+
+RAFFINERAD-manualen anger dessutom att apparaten inte får styras med extern timer eller externt fjärrkontrollsystem. Efter användarens uttryckliga beslut används Shellyn experimentellt för **automatisk frånkoppling**, men aldrig för automatisk tillkoppling eller fjärrstart. Funktionen är inte ett tillverkar- eller installationsgodkännande och den öppna manualfrågan samt Shellyns märkning för resistiv last kvarstår. Automatisk återinkoppling får inte kunna återstarta en matlagningscykel.
+
+### Beslutad styrregel för mikron
+
+Den första aktiva firmwareversionen använder följande regel:
+
+- total uppmätt ström på **L1** får vara högst **20,0 A** tillsammans med mikron;
+- automatisk frånkoppling begärs först när L1 är **över 20,0 A** och Shellyn samtidigt mäter minst **500 W**;
+- Tibbervärdet måste vara verkligt och högst **5 sekunder** gammalt;
+- simulerade, saknade eller gamla fasvärden får aldrig påverka reläet;
+- automatiken får endast begära **AV** och kan aldrig begära **PÅ**;
+- efter ett automatiskt stopp sker återinkoppling manuellt på panelens reläsida med två sekunders långtryck och separat bekräftelse;
+- reläsidan visar aktuell L1 vid återinkoppling när färsk data finns.
+
+Det korta mikrovågsprovet visade cirka 7,9 A som högsta observerade ström. 20 A-gränsen lämnar därmed ungefär 12 A för övriga L1-laster under den observerade mikrokörningen och cirka 5 A till huvudsäkringens nominella 25 A. Lägre vald mikrovågseffekt ska inte räknas som proportionellt lägre ögonblickslast eftersom många mikrovågsugnar reglerar med full effekt i intervaller.
+
+Frånkopplingen arbetar med Tibbers uppdatering, lokalt nätverk, Shellyavläsning och reläkommando. Den är därför laststyrning med sekunders fördröjning, inte överströmsskydd, och ersätter inte säkring eller annan skyddsutrustning. Automatisk frånkoppling över 20 A är kompilerad och flashad 2026-10-17; ett kontrollerat prov som faktiskt utlöser gränsen återstår.
+
+Källor: [IKEA RAFFINERAD-manual](https://www.ikea.com/se/sv/manuals/raffinerad-mikrovagsugn__AA-1513160-2.pdf) och [Shelly Plug S Gen3 – tekniska data](https://kb.shelly.cloud/knowledge-base/shelly-plug-s-mtr-gen3).
+
 ## 2026-10-16 – COALA och elpatronens kontaktorer
 
 Uppgifterna nedan kommer från märkningen på den ännu inte installerade belastningsvakten och tre fotografier tagna 2026-10-16. Fotografierna är inte incheckade i Git-förrådet. All fast inkoppling och slutlig verifiering ska göras av elektrikern.
@@ -54,9 +99,19 @@ Lysdioderna betyder enligt manualen:
 
 EVS1-3 matas med 230 V på `L` och `N`, saknar inbyggd säkring och ska enligt manualen strömförsörjas via en säkring i centralen; principskissen anger högst 10 A. Skyddsjord används inte i enheten. De tre strömtransformatorerna monteras på inkommande faser och ansluts till `S1`, `S2` och `S3`, med gemensam retur enligt manualens plintmarkering. Detta är installationsinformation för elektrikern, inte en instruktion för egen inkoppling.
 
-### Relek-elpatron – exakt modell ännu okänd
+### Relek-elpatron – verifierad modell
 
-Ett fotografi visar en installerad elpatron från **Relek Produktion AB** med temperaturvred graderat från 0 och 30–90 °C samt röd manuell återställningsknapp. Ingen typskylt med exakt modell eller effekt har ännu hittats. Vredet och kapslingen räcker inte för säker identifiering eftersom samma montage- och skötselanvisning omfattar flera snarlika modeller.
+Typskylten fotograferades 2026-10-16 och identifierar den installerade patronen som **Relek PF 9 kW, 2 h spärr**. Fotografiet är inte incheckat i Git-förrådet. Följande uppgifter är avlästa direkt från typskylten:
+
+- matning: **400 V AC3 N**;
+- märkeffekt: **9 kW**;
+- utförande: **2 h spärr**;
+- termostat: **4-stegs EGO**;
+- överhettningsskydd: **3-poligt EGO**;
+- provtryck: **9 bar**;
+- tillverkare: **Relek Produktion AB**.
+
+Vid balanserad full effekt motsvarar 9 kW ungefär **13,0 A per fas**. Halv effekt, 4,5 kW, motsvarar ungefär **6,5 A per fas**. Värdena är beräknade från märkdata; verklig ström och verkliga steg ska fortfarande mätas.
 
 Den fotograferade manualen är *Montage- & skötselanvisning för Elpatroner*, uppdaterad februari 2021, och omfattar EP1, PP1, EP2, PP2, PPS och PF. Manualen anger följande modellskillnader:
 
@@ -69,22 +124,22 @@ Den fotograferade manualen är *Montage- & skötselanvisning för Elpatroner*, u
 
 Alla beskrivna modeller har trepoligt temperaturbegränsnings-/överhettningsskydd med manuell återställning. Manualen anger att skyddet normalt löser vid cirka 94 °C; golvvärmevarianten EP-G anges till cirka 60 °C. Elpatronen ska föregås av en allpolig strömställare/huvudbrytare.
 
-Sidan för **PF 9000 W** är relevant men får tills vidare bara behandlas som en möjlig modell, inte som identifiering av den installerade patronen. För PF anger manualen:
+Den identifierade patronen är alltså modellen **PF 9000 W** som beskrivs på den fotograferade manualsidan. För PF anger manualen:
 
 - märkeffekt 9 kW vid 400 V trefas med neutralledare;
 - inbyggt tidsfördröjningsrelä som halverar effekten under två timmar efter strömavbrott och vid uppstart;
 - intern kontaktor för halv effekt, styrd av tidsreläet och en eventuell extern effektvakt;
 - särskild anslutning `K` för signal från effektvakt; utan effektvakt byglas `F–K` enligt schemat.
 
-Om patronen verkligen är PF 9000 W blir den beräknade resistiva fasströmmen ungefär 13,0 A vid full effekt och 6,5 A vid halv effekt vid 400 V. Ett belastningstest direkt efter spänningssättning kan då visa halv effekt i två timmar och får inte användas ensamt för att identifiera patronens märkeffekt.
+Ett belastningstest direkt efter spänningssättning kan visa halv effekt i två timmar och får därför inte användas ensamt för att bedöma patronens normala fullast. Typskyltens `2 h spärr` bekräftar att denna begränsning finns på den installerade patronen.
 
-PF-variantens dedikerade effektvaktsingång kan påverka den slutliga konstruktionen väsentligt. Elektrikern ska därför verifiera modell, intern koppling och vad plintarna `F` och `K` används till innan det bestäms om de externa Benedict-kontaktorerna ska bryta effekt, styra andra laster eller samverka med patronens interna kontaktor.
+PF-variantens dedikerade effektvaktsingång kan påverka den slutliga konstruktionen väsentligt. `F–K` och den interna kontaktorn framgår av PF-manualen men inte av typskylten; elektrikern ska därför verifiera den verkliga interna kopplingen och vad plintarna används till innan det bestäms om de externa Benedict-kontaktorerna ska bryta effekt, styra andra laster eller samverka med patronens interna kontaktor.
 
 ### Föreslagen princip
 
 COALA behålls som fristående lokal effektvakt. En smart tvåkanalig DIN-modul läggs i serie med COALAs två styrutgångar och kan endast blockera eller tillåta kontaktorspolarna. Elpatronens trefaslast ska inte ledas genom smartmodulen, och smartmodulen får aldrig kunna kringgå pannans termostat, överhettningsskydd eller annan säkerhetskedja.
 
-Principen är preliminär tills Relek-patronens exakta modell och befintliga styrkrets har verifierats. Om det är PF 9000 W kan dess avsedda effektvaktsingång vara lämpligare för en del av styrningen än extern brytning av huvudströmmen.
+Principen är preliminär tills patronens befintliga styrkrets har verifierats. Eftersom modellen nu är bekräftad som PF 9 kW kan dess avsedda effektvaktsingång vara lämpligare för en del av styrningen än extern brytning av huvudströmmen.
 
 Det ger följande ansvarsfördelning:
 
@@ -120,8 +175,8 @@ Produktinformation: [Shelly Pro 2](https://www.shelly.com/products/shelly-pro-2)
 
 ### Kvar att fastställa
 
-- Relek-elpatronens exakta typbeteckning, märkeffekt och typskylt.
-- Om patronen har den interna tvåtimmarsfördröjningen och effektvaktsingången `F–K` som beskrivs för PF 9000 W.
+- Hur patronens bekräftade tvåtimmarsspärr och interna kontaktor är kopplade i den verkliga installationen.
+- Om effektvaktsingången `F–K` är byglad, ansluten eller ledig.
 - Vilken kontaktor som styr elpatronsteg 1 respektive steg 2.
 - Effekt i kW och ström per fas för respektive steg.
 - Önskat reservläge vid förlorad Tibberdata, nätverk, styrspänning eller omstart.

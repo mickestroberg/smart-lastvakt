@@ -4,6 +4,7 @@ idf_component_register(
         "app_config.c"
         "app_time.c"
         "calendar_source.c"
+        "microwave_guard.c"
         "network_setup.c"
         "phase_source.c"
         "shelly_client.c"

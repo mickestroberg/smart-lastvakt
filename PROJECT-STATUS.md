@@ -1,6 +1,6 @@
 # Projektstatus – Smart lastvakt
 
-Senast uppdaterad: **2026-10-16**
+Senast uppdaterad: **2026-10-17**
 
 Detta är projektets gemensamma överlämningsdokument. En ny tråd ska kunna börja här utan att läsa hela chatthistoriken. Tekniska detaljer finns i dokumenten som länkas nedan.
 
@@ -32,11 +32,15 @@ Fabriksbackupen kan innehålla enhetsspecifika data och ska inte läggas i Git. 
 - Utvecklingsmiljö: Windows och ESP-IDF **5.5.5**.
 - Huvudsäkringar: **25 A per fas**.
 - Tibber Pulse: L1/L2/L3 har jämförts med Tibber-appen och värdena stämde exakt vid kontrollen.
-- Shelly: **Shelly Plug S Gen3**, lokalt ansluten och provad med vattenkokare för effektvisning och relästyrning.
-- Mikrovågsugn: **IKEA RAFFINERAD**, uppgiven anslutningseffekt **2300 W**.
-- Shelly-pluggens uppgivna gräns enligt användaren: **2500 W**. Marginalen till mikrons märkdata är liten och permanent användning ska inte betraktas som slutligt godkänd enbart utifrån dessa två tal.
+- Shelly: **Shelly Plug S Gen3**, lokalt ansluten och provad med både vattenkokare och den verkliga mikrovågsugnen.
+- Mikrovågsugn: **IKEA RAFFINERAD**, vars egen typskylt anger **2100 W**. Den generella manualens 2300 W behandlas som annan variant eller generell maxuppgift.
+- Shelly anger **12 A** och **2500 W för resistiv last**. Mikron är inte en rent resistiv last, så märkdata och ett kort prov räcker inte ensamma som slutligt godkännande för permanent brytning.
 
 Shelly-pluggen provades först i ett uttag på L3 medan mikrons ordinarie uttag ligger på L1. Stapeln reagerade korrekt på vattenkokaren och manuell till-/frånkoppling fungerade. Shelly rapporterade vid ett tillfälle 41,9 °C trots att kapslingen inte kändes varm; värdet ska behandlas som enhetens interna temperaturmätning, inte som uppmätt yttemperatur.
+
+Den 2026-10-17 flyttades pluggen till mikrons verkliga uttag på L1. Ett kort prov på full mikrovågseffekt gav högst **1741,8 W** och **7,913 A**, med lägst **235,3 V**. Shellyns interna temperatur steg från 43,4 till högst 44,2 °C. Efter huvudlasten låg mikron omkring 26,7 W under knappt en minut innan den gick till 0 W. Detaljer och avgränsningar finns i [HARDWARE-NOTES.md](HARDWARE-NOTES.md).
+
+Ett efterföljande treminutersprov med en liter vatten gav högst **1723,4 W**, **7,816 A** och 235,3 V. Den interna temperaturen ökade från 44,3 till högst 46,7 °C, varav toppvärdet uppmättes två minuter efter stopp. Provets energi var cirka 87,7 Wh. Direkt efteråt upplevdes Shellyhölje, stickproppar och vägguttag som rumstempererade vid manuell kontroll.
 
 ## Det som fungerar på displayen
 
@@ -51,16 +55,18 @@ Shelly-pluggen provades först i ett uttag på L3 medan mikrons ordinarie uttag 
 - Systemstatussida via rubriken **SMART LASTVAKT**, inklusive nätstatus, tidskälla och QR-kod till installationssidan.
 - Shelly-status och effekt på huvudsidan samt en egen detaljsida med ström, spänning och temperatur.
 - Manuell Shelly-styrning skyddad av två sekunders långtryck och separat bekräftelse.
+- Automatisk frånkoppling av mikron när den är aktiv och färsk Tibberdata visar L1 över 20,0 A. Automatiken kan aldrig slå på uttaget igen.
+- Reläsidan visar autoskyddets tillgänglighet, utlösande L1 och aktuell L1 inför manuell återinkoppling.
 - Svenska tecken i Shelly-lägena och ersättning av kalenderemoji som saknar skärmglyf.
 - Lokal installationssida för Wi-Fi, Tibber-token, privat kalenderadress och Shelly-adress.
 
-Bygget är kompilerat, flashat och startverifierat på den verkliga panelen. Se [README.md](README.md) för användning och [BUILD-REPORT.md](BUILD-REPORT.md) för verifierade detaljer.
+20 A-versionen kompilerades, flashades och startverifierades på den verkliga panelen 2026-10-17. Ett kontrollerat prov som faktiskt utlöser den automatiska frånkopplingen återstår. Se [README.md](README.md) för användning och [BUILD-REPORT.md](BUILD-REPORT.md) för verifierade detaljer.
 
 ## Hårdvarufri utveckling
 
 En frikopplad referensmodell för framtida tvåstegsstyrning finns i `tools/load_guard_policy.py`. Den har inga nätverks- eller reläutgångar och ingår inte i ESP32-firmware. Modellen gör det möjligt att testa fasgränser, stegordning, fördröjningar, återinkopplingsutrymme, datans färskhet och tidsbegränsade externa blockeringar innan den verkliga installationen är känd.
 
-Automatiserade datorbaserade tester finns i `tests/test_load_guard_policy.py`. Se [LOAD-GUARD-POLICY.md](LOAD-GUARD-POLICY.md) för beteende, avgränsning och körning.
+Automatiserade datorbaserade tester finns i `tests/test_load_guard_policy.py`. Mikrons aktiva envägsvakt har dessutom en ren beslutsmodell i `tools/microwave_guard_policy.py` med tester i `tests/test_microwave_guard_policy.py`. Se [LOAD-GUARD-POLICY.md](LOAD-GUARD-POLICY.md) för beteende, avgränsning och körning.
 
 ## Sekretess och konfiguration
 
@@ -78,9 +84,17 @@ Uppgifterna lagras i ESP32-enhetens NVS och matas in via den lokala installation
 ### Display och mätdata
 
 - Displayen får visa simulerade fasvärden när Tibber saknas, men simulerade värden får **aldrig** användas för reläbeslut.
-- Framtida styrning ska kontrollera mätvärdets ålder och att alla nödvändiga fasvärden är giltiga.
+- All relästyrning ska kontrollera mätvärdets ålder och att alla nödvändiga fasvärden är giltiga.
 - Fasgränser och säkerhetsbegränsning ska ha företräde framför prisoptimering.
 - En smart styrning får endast begränsa tillåten last; den får aldrig tvinga värme eller annan last att starta.
+
+### Mikrovågsugn
+
+- Total L1 får vara högst **20,0 A** tillsammans med mikron; automatisk frånkoppling sker först över gränsen.
+- Mikron bedöms vara aktiv när Shellyn mäter minst **500 W**.
+- Tibbervärdet måste vara verkligt och högst **5 sekunder** gammalt för att få styra reläet.
+- Automatiken kan bara begära **AV**. Återinkoppling är alltid manuell med två sekunders långtryck och separat bekräftelse.
+- Detta är laststyrning med nätverks- och mätfördröjning, inte ett överströmsskydd och inte en ersättning för 25 A-huvudsäkringen.
 
 ### Elpatron och trefas
 
@@ -107,47 +121,48 @@ COALA, kontaktorerna och Relek-patronen dokumenteras utförligt i [HARDWARE-NOTE
 
 ## Relek-elpatronen
 
-Den installerade patronen är från **Relek Produktion AB** och har ett vred märkt 30–90 °C samt manuell återställning. Exakt modell och märkeffekt är ännu inte identifierade.
+Typskylten fotograferades 2026-10-16 och bekräftar att den installerade patronen är **Relek PF 9 kW, 2 h spärr**, matad med **400 V AC3 N**. Typskylten anger också fyrstegstermostat, trepoligt överhettningsskydd och 9 bars provtryck.
 
-Manualen omfattar flera modeller. **PF 9000 W** är en möjlig, men inte bekräftad, kandidat. Om det är PF-modellen har den:
+Den bekräftade PF-modellen har enligt märkning och manual:
 
 - 9 kW trefaseffekt, cirka 13 A per fas vid full effekt;
 - ett balanserat halvt steg på cirka 4,5 kW och 6,5 A per fas;
 - två timmars halverad effekt efter strömavbrott eller uppstart;
 - intern kontaktor och särskild effektvaktsingång `F–K`.
 
-Om patronen är PF kan `F–K` vara lämpligare än att låta en ny smartmodul bryta huvudströmmen. Detta ska verifieras av elektrikern och får inte antas från kapslingens utseende.
+`F–K` kan vara lämpligare än att låta en ny smartmodul bryta huvudströmmen. Ingången och den verkliga interna kopplingen ska ändå verifieras av elektrikern; `F–K` framgår av manualen men inte av typskylten.
 
 ## Mikrovågsugn och Shelly
 
-Nuvarande firmware ger övervakning och skyddad manuell relästyrning. Automatisk frånkoppling av mikron är ännu inte färdigprojekterad.
+Nuvarande firmware ger övervakning, skyddad manuell relästyrning och automatisk **frånkoppling** enligt 20 A-regeln ovan. Efter auto-stopp ligger uttaget av tills en människa återinkopplar det på reläsidan. Systemet innehåller ingen automatisk tillkoppling och kan därför inte starta en matlagningscykel efter att lasten har sjunkit.
 
-Målbilden är att kunna hindra start när fasbelastningen är olämplig och ge familjen ett begripligt besked. Systemet får inte automatiskt återstarta en matlagningscykel eller skapa ett oövervakat återinkopplingsscenario. Shelly-pluggens verkliga marginal, temperatur och beteende med just mikron ska kontrolleras innan permanent automatisk styrning aktiveras.
+Funktionen är avsiktligt försiktig med datakvalitet: om Tibbervärdet är simulerat, saknas eller är äldre än fem sekunder gör automatiken ingenting och visar att skyddet inte är tillgängligt. Den fysiska frånkopplingskedjan över 20 A har ännu inte utlösts i ett kontrollerat prov. Verklig drift är uppmätt, men IKEA-manualens formulering om extern styrning och Shellyns märkning för resistiv last är fortfarande öppna frågor för permanent användning.
 
 ## Planerade familjefunktioner
 
 - Enkel gemensam inköpslista, exempelvis ”mjölken är slut”, med inmatning från mobil eller panel och valbar notis till de vuxna.
 - Kalenderförbättringar efter familjens praktiska användning.
 - Prisvisning och prisstyrning via Tibber, underordnad fas- och säkerhetsgränser.
-- Säker automatisk begränsning av mikron.
+- Möjlig förvarning eller startspärr för mikron innan 20 A-vakten behöver bryta en pågående körning.
 - Smart, stegvis begränsning av elpatronen i samarbete med COALA.
 - Spis/torrkokningsskydd har diskuterats som ett separat framtida säkerhetsproblem men ingår inte i nuvarande konstruktion.
 
 ## Nästa steg i prioriterad ordning
 
-1. Hitta Relek-patronens typskylt eller på annat säkert sätt fastställa modell och märkeffekt.
-2. Låt elektrikern fastställa vad de två Benedict-kontaktorerna matar och vilken som styrs av `Re1` respektive `Re2`.
-3. Kontrollera om patronen har PF-modellens tvåtimmarsrelä och `F–K`-ingång samt om `F–K` är byglad eller ansluten.
-4. Mäta strömändringen per fas för varje verkligt effektsteg.
-5. Rita och godkänn slutligt kopplingsschema, inklusive reservläge, SMART/BYPASS och eventuell återkoppling från hjälpkontakterna.
-6. Bestäm slutliga styrgränser, hysteres, minsta till-/fråntider och beteende vid omstart eller saknad data.
-7. Verifiera Shelly-pluggens lämplighet och mikrons verkliga belastning innan automatisk mikrostyrning.
-8. Ersätt referensmodellens exempelparametrar med mätta och godkända värden.
-9. Porta den testade policyn till firmware och implementera fysisk relälogik först därefter.
+1. Genomför ett kontrollerat prov av mikrons auto-stopp och den manuella återinkopplingsdialogen; slutversionen ska därefter åter vara verifierad på 20 A.
+2. Gör en slutlig säkerhetsbedömning av Shelly-pluggens lämplighet för mikron, inklusive korta startströmmar och IKEA-manualens begränsning av extern styrning.
+3. Låt elektrikern fastställa vad de två Benedict-kontaktorerna matar och vilken som styrs av `Re1` respektive `Re2`.
+4. Kontrollera den bekräftade PF-patronens interna kontaktor och om effektvaktsingången `F–K` är byglad, ansluten eller ledig.
+5. Verifiera tvåtimmarsspärrens praktiska beteende utan att förväxla ett halvlastprov direkt efter spänningssättning med patronens fulla effekt.
+6. Mäta strömändringen per fas för varje verkligt effektsteg.
+7. Rita och godkänn slutligt kopplingsschema, inklusive reservläge, SMART/BYPASS och eventuell återkoppling från hjälpkontakterna.
+8. Bestäm slutliga styrgränser, hysteres, minsta till-/fråntider och beteende vid omstart eller saknad data.
+9. Ersätt referensmodellens exempelparametrar med mätta och godkända värden.
+10. Porta den testade policyn till firmware och implementera fysisk relälogik först därefter.
 
 ## Öppna konstruktionsfrågor
 
-- Exakt Relek-modell, märkeffekt och internt kopplingsschema.
+- Relek-patronens verkliga interna koppling kring kontaktor, tvåtimmarsspärr och `F–K`.
 - Kontaktorernas verkliga last och prioritet.
 - Om en eller båda externa kontaktorerna behövs om `F–K` finns.
 - Slutligt val av smart DIN-modul; Shelly Pro 2 är endast kandidat.

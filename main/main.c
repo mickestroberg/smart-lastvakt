@@ -14,6 +14,7 @@
 #include "app_time.h"
 #include "app_config.h"
 #include "calendar_source.h"
+#include "microwave_guard.h"
 #include "network_setup.h"
 #include "phase_source.h"
 #include "shelly_client.h"
@@ -42,6 +43,7 @@ void app_main(void)
     ESP_ERROR_CHECK(network_setup_start());
     phase_source_init();
     ESP_ERROR_CHECK(shelly_client_start());
+    ESP_ERROR_CHECK(microwave_guard_start());
     calendar_source_init();
     weather_source_init();
 

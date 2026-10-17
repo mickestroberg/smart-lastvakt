@@ -34,7 +34,7 @@ Endast tillgängliga, icke-simulerade, ändliga och tillräckligt färska fasvä
 
 ## Viktigt om exempelvärdena
 
-Funktionen `pf_candidate_example_config()` använder 23 A som illustrativ gräns och 6,5 A per steg, motsvarande hypotesen att patronen kan vara PF 9000 W med två lika stora steg. Fördröjningarna är också demonstrationsvärden. **Inget av detta är godkända installationsinställningar.** Verkliga värden bestäms först efter identifiering och mätning tillsammans med elektrikern.
+Funktionen `pf_candidate_example_config()` använder 23 A som illustrativ gräns och 6,5 A per steg. Typskylten bekräftar nu att patronen är Relek PF 9 kW med tvåtimmarsspärr; 6,5 A motsvarar beräknad fasström för halva märkeffekten. Det är däremot ännu inte verifierat att de två externa styrstegen motsvarar två lika stora 4,5 kW-steg. Fördröjningarna är också demonstrationsvärden. **Inget av detta är godkända installationsinställningar.** Verkliga steg, strömmar och gränser bestäms efter mätning och kontroll av elektrikern.
 
 ## Köra tester och demonstration
 
@@ -46,3 +46,16 @@ python -m tools.simulate_load_guard
 ```
 
 Testerna täcker bland annat högsta fas, stegordning, fördröjning, beräknat utrymme före återinkoppling, simulerad och gammal data samt utgången tidsbegränsad blockering.
+
+## Aktiv mikrovågsvakt
+
+Mikrons enklare, ensidiga skydd finns i firmware i `main/microwave_guard.c` och som datorbaserad beslutsmodell i `tools/microwave_guard_policy.py`. Modellen testas av `tests/test_microwave_guard_policy.py`.
+
+Standardregeln begär Shelly **AV** när samtliga villkor är uppfyllda:
+
+- färsk, verklig Tibberdata finns och är högst 5 sekunder gammal;
+- Shellyn är nåbar, påslagen och inget annat reläkommando pågår;
+- Shellyn mäter minst 500 W, vilket betyder att mikron bedöms vara aktiv;
+- total L1 är strikt över 20,0 A.
+
+Exakt 20,0 A utlöser inte frånkoppling. Simulerad, gammal eller saknad fasdata kan aldrig ge ett reläkommando. Vakten innehåller ingen väg som begär **PÅ**; återinkoppling är en separat manuell åtgärd i panelens relävy.

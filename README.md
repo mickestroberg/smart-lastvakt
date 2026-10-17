@@ -21,7 +21,10 @@ En frikopplad, datorbaserad referensmodell för framtida tvåstegsstyrning finns
 - Kalendern uppdateras var 15:e minut och vanliga dagliga, veckovisa, månatliga och årliga upprepningar stöds.
 - Tibber GraphQL-abonnemang med `currentL1`, `currentL2` och `currentL3` i realtid.
 - Lokal mätning från Shelly Plug S Gen3: **REDO**, **KÖR** eller **STRÖMLÖS** och aktuell effekt på huvudvyn samt ström, spänning och temperatur på en egen Shelly-sida.
-- Skyddad manuell relästyrning: tryck på mikroraden, håll styrknappen i två sekunder och bekräfta därefter ändringen i ett separat dialogfönster.
+- Ensidigt mikroskydd: när Shellyn mäter minst 500 W och färsk Tibberdata visar att total L1 är över **20,0 A** begär panelen automatiskt **AV**. Exakt 20,0 A tillåts.
+- Ingen automatisk återinkoppling. Efter ett automatiskt stopp visar reläsidan aktuell L1 och kräver två sekunders långtryck samt separat bekräftelse för att slå på uttaget igen.
+- Skyddad manuell relästyrning även i normal drift: tryck på mikroraden, håll styrknappen i två sekunder och bekräfta därefter ändringen i ett separat dialogfönster.
+- Simulerade, saknade eller äldre Tibbervärden får aldrig styra reläet; reläsidan visar då att autoskyddet väntar på färsk data.
 - Simulerade fasvärden används automatiskt tills Tibber är konfigurerat eller om liveflödet är tillfälligt nere.
 - Tydliga belastningszoner: grönt till 10 A, orange till 17,5 A och rött över 17,5 A med 25 A huvudsäkring.
 - Automatisk fasvy i röd zon och återgång efter åtta sekunder.
@@ -31,7 +34,7 @@ En frikopplad, datorbaserad referensmodell för framtida tvåstegsstyrning finns
 ## Planerade familjefunktioner
 
 - En enkel gemensam inköpslista med möjlighet att lägga till exempelvis ”mjölk” från mobil eller display.
-- Säker automatisk lastfrånkoppling för mikron efter att installationen och mikrons verkliga förbrukning har verifierats på plats.
+- Kontrollerat praktiskt prov av mikrons automatiska frånkoppling samt fortsatt bedömning av Shellyns lämplighet och apparatmanualens begränsning av extern styrning.
 - Pris- och fasstyrd begränsning av elpatronens två effektsteg som ett smart tillägg i serie med den separata COALA-vakten. Verifierade apparatuppgifter och öppna konstruktionsfrågor finns i [HARDWARE-NOTES.md](HARDWARE-NOTES.md).
 
 Kalendern läses skrivskyddat via Googles hemliga iCal-adress. Adressen lagras endast på enheten, aldrig i Git-förrådet eller i loggarna.
@@ -49,7 +52,9 @@ En personlig token kan skapas på [Tibber Developer](https://developer.tibber.co
 
 ### Sekretess och säkerhet
 
-SSID, lösenord, Tibber-token, kalenderadress och Shelly-adress lagras i ESP32-enhetens NVS-minne och skrivs aldrig till projektfiler eller loggar. Installationssidan använder vanlig lokal HTTP och saknar egen inloggning; använd den därför bara på ett betrott hemnätverk och låt inte installationsnätverket vara åtkomligt längre än nödvändigt. Reläet kan bara ändras från Shelly-sidan efter både ett två sekunder långt tryck och en separat bekräftelse.
+SSID, lösenord, Tibber-token, kalenderadress och Shelly-adress lagras i ESP32-enhetens NVS-minne och skrivs aldrig till projektfiler eller loggar. Installationssidan använder vanlig lokal HTTP och saknar egen inloggning; använd den därför bara på ett betrott hemnätverk och låt inte installationsnätverket vara åtkomligt längre än nödvändigt. Automatiken kan bara bryta strömmen. Tillkoppling kan endast begäras manuellt från Shelly-sidan efter både ett två sekunder långt tryck och en separat bekräftelse.
+
+20 A-funktionen är laststyrning med Tibbers och det lokala nätverkets normala fördröjning. Den ersätter inte huvudsäkring, elinstallationens skydd eller tillsyn av mikrovågsugnen.
 
 ## Bygga
 
@@ -62,7 +67,7 @@ idf.py build
 
 ## Testa styrprincipen utan hårdvara
 
-Referensmodellen använder endast Pythons standardbibliotek:
+Referensmodellerna använder endast Pythons standardbibliotek. Testsviten omfattar både den framtida tvåstegsstyrningen för elpatronen och mikrons ensidiga 20 A-skydd:
 
 ```powershell
 python -m unittest discover -s tests -v
@@ -91,7 +96,10 @@ De tre färdiga bilderna ligger även i `firmware/` och har följande offset:
 
 - huvudsäkring per fas, standard 25 A;
 - gränser för orange och röd zon, standard 40 respektive 70 % av huvudsäkringen;
-- hur länge fasvyn ligger kvar efter varningen, standard 8 sekunder.
+- hur länge fasvyn ligger kvar efter varningen, standard 8 sekunder;
+- mikrons automatiska L1-frånkopplingsgräns, standard 20 A;
+- Shellyeffekt som räknas som aktiv mikro, standard 500 W;
+- högsta tillåtna ålder på Tibbervärdet för reläbeslut, standard 5 sekunder.
 
 ## Struktur
 
@@ -99,6 +107,7 @@ De tre färdiga bilderna ligger även i `firmware/` och har följande offset:
 - `main/calendar_source.c` – hämtar, tolkar och sorterar kommande kalenderhändelser från privat iCal.
 - `main/weather_source.c` – hämtar aktuellt väder för Älvsjö och behåller senaste värdet vid tillfälliga anslutningsfel.
 - `main/shelly_client.c` – hämtar reläläge och elmätvärden och verkställer bekräftade reläkommandon i bakgrunden på det lokala nätverket.
+- `main/microwave_guard.c` – övervakar färsk L1-data och kan endast begära automatisk frånkoppling av mikron; den begär aldrig tillkoppling.
 - `main/tibber_client.c` – Tibbers GraphQL- och WebSocket-klient.
 - `main/phase_source.c` – väljer livevärden eller simulering.
 - `main/app_time.c` – RTC, NTP och svensk tidszon.

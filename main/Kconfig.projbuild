@@ -23,6 +23,31 @@ menu "Example Configuration"
             default 8
             range 1 120
 
+        config LASTVAKT_MICROWAVE_L1_LIMIT_A
+            int "Automatic microwave cutoff above L1 current (A)"
+            default 20
+            range 10 63
+            help
+                The Shelly output is turned off when the microwave is drawing power
+                and fresh Tibber data reports L1 above this limit. The guard never
+                turns the output on.
+
+        config LASTVAKT_MICROWAVE_ACTIVE_POWER_W
+            int "Microwave active power threshold (W)"
+            default 500
+            range 20 2500
+            help
+                The automatic cutoff is armed only while Shelly reports at least
+                this much power, avoiding trips caused by standby or cooling loads.
+
+        config LASTVAKT_MICROWAVE_MAX_TIBBER_AGE_SECONDS
+            int "Maximum Tibber sample age for microwave cutoff (seconds)"
+            default 5
+            range 1 30
+            help
+                Simulated, missing or older phase values are never used for relay
+                decisions.
+
     endmenu
 
     menu "Display"

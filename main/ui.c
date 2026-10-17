@@ -12,6 +12,7 @@
 #include "app_time.h"
 #include "calendar_source.h"
 #include "lastvakt_fonts.h"
+#include "microwave_guard.h"
 #include "network_setup.h"
 #include "phase_source.h"
 #include "shelly_client.h"
@@ -87,6 +88,7 @@ typedef struct {
     lv_obj_t *shelly_control_button;
     lv_obj_t *shelly_control_label;
     lv_obj_t *shelly_control_hint;
+    lv_obj_t *shelly_safety_text;
     lv_obj_t *shelly_confirm_overlay;
     lv_obj_t *shelly_confirm_question;
     lv_obj_t *shelly_confirm_button;
@@ -679,11 +681,31 @@ static void shelly_hold_event(lv_event_t *event)
 
     s_ui.shelly_hold_triggered = true;
     s_ui.shelly_confirm_target = !sample.output_on;
-    lv_label_set_text(
-        s_ui.shelly_confirm_question,
-        s_ui.shelly_confirm_target
-            ? "Slå på strömmen till Shelly-uttaget?"
-            : "Bryt strömmen till Shelly-uttaget?");
+    const microwave_guard_status_t guard = microwave_guard_get();
+    char question[128];
+    if (s_ui.shelly_confirm_target && guard.tripped && guard.protection_available) {
+        snprintf(
+            question,
+            sizeof(question),
+            "Återinkoppla manuellt? L1 är %.1f A. Mikron startas inte automatiskt.",
+            guard.current_l1_a);
+    } else if (s_ui.shelly_confirm_target && guard.tripped) {
+        snprintf(
+            question,
+            sizeof(question),
+            "Återinkoppla manuellt? Färsk L1-data saknas. Kontrollera lasten först.");
+    } else {
+        snprintf(
+            question,
+            sizeof(question),
+            "%s",
+            s_ui.shelly_confirm_target ? "Slå på strömmen till Shelly-uttaget?"
+                                       : "Bryt strömmen till Shelly-uttaget?");
+    }
+    for (char *p = question; *p != '\0'; ++p) {
+        if (*p == '.') *p = ',';
+    }
+    lv_label_set_text(s_ui.shelly_confirm_question, question);
     lv_label_set_text(
         s_ui.shelly_confirm_button_label,
         s_ui.shelly_confirm_target ? "Ja, slå på" : "Ja, stäng av");
@@ -1114,11 +1136,11 @@ static void create_shelly_view(lv_obj_t *root)
     lv_label_set_text(safety_title, "SÄKER STYRNING");
     lv_obj_set_pos(safety_title, 20, 13);
 
-    lv_obj_t *safety_text = make_label(safety_panel, &lv_font_lastvakt_16, COLOR_TEXT);
-    lv_obj_set_width(safety_text, 688);
-    lv_label_set_long_mode(safety_text, LV_LABEL_LONG_DOT);
-    lv_label_set_text(safety_text, "Kontrollera alltid apparaten innan strömmen slås på.");
-    lv_obj_set_pos(safety_text, 20, 39);
+    s_ui.shelly_safety_text = make_label(safety_panel, &lv_font_lastvakt_16, COLOR_TEXT);
+    lv_obj_set_width(s_ui.shelly_safety_text, 688);
+    lv_label_set_long_mode(s_ui.shelly_safety_text, LV_LABEL_LONG_DOT);
+    lv_label_set_text(s_ui.shelly_safety_text, "Autoskydd 20 A • återinkoppling är alltid manuell.");
+    lv_obj_set_pos(s_ui.shelly_safety_text, 20, 39);
 
     s_ui.shelly_confirm_overlay = lv_obj_create(s_ui.shelly_view);
     lv_obj_set_size(s_ui.shelly_confirm_overlay, 800, 480);
@@ -1244,43 +1266,89 @@ static void ui_timer(lv_timer_t *timer)
     shelly_sample_t shelly = {0};
     const shelly_state_t shelly_state = shelly_client_get(&shelly);
     const bool shelly_command_pending = shelly_client_command_pending();
+    const microwave_guard_status_t guard = microwave_guard_get();
     if (shelly.available) {
         char microwave_text[96];
-        snprintf(
-            microwave_text,
-            sizeof(microwave_text),
-            "MIKRO • %s • %.0f W",
-            shelly_command_pending ? "VÄXLAR" : shelly_mode_label(&shelly),
-            shelly.power_w);
+        if (guard.tripped && !shelly.output_on) {
+            snprintf(
+                microwave_text,
+                sizeof(microwave_text),
+                "MIKRO • AUTO STOPP • L1 %.1f A",
+                guard.trip_l1_a);
+        } else {
+            snprintf(
+                microwave_text,
+                sizeof(microwave_text),
+                "MIKRO • %s • %.0f W",
+                shelly_command_pending ? "VÄXLAR" : shelly_mode_label(&shelly),
+                shelly.power_w);
+        }
+        for (char *p = microwave_text; *p != '\0'; ++p) {
+            if (*p == '.') *p = ',';
+        }
         lv_label_set_text(s_ui.microwave_status, microwave_text);
 
         char shelly_status[128];
-        snprintf(
-            shelly_status,
-            sizeof(shelly_status),
-            "Shelly: %s • %.0f W • %.0f V • %.0f C%s",
-            shelly.output_on ? "på" : "av",
-            shelly.power_w,
-            shelly.voltage_v,
-            shelly.temperature_c,
-            shelly_state == SHELLY_STALE ? " • senaste värdet" : "");
+        if (guard.tripped && !shelly.output_on) {
+            snprintf(
+                shelly_status,
+                sizeof(shelly_status),
+                "Shelly: av • AUTO STOPP vid L1 %.1f A",
+                guard.trip_l1_a);
+        } else {
+            snprintf(
+                shelly_status,
+                sizeof(shelly_status),
+                "Shelly: %s • %.0f W • %.0f V • %.0f C%s",
+                shelly.output_on ? "på" : "av",
+                shelly.power_w,
+                shelly.voltage_v,
+                shelly.temperature_c,
+                shelly_state == SHELLY_STALE ? " • senaste värdet" : "");
+        }
+        for (char *p = shelly_status; *p != '\0'; ++p) {
+            if (*p == '.') *p = ',';
+        }
         lv_label_set_text(s_ui.status_shelly, shelly_status);
-        const uint32_t shelly_color = shelly_state == SHELLY_READY
-                                          ? (shelly_command_pending ? COLOR_WARNING : shelly_mode_color(&shelly))
-                                          : COLOR_WARNING;
+        const uint32_t shelly_color = guard.tripped && !shelly.output_on
+                                          ? COLOR_DANGER
+                                          : (shelly_state == SHELLY_READY
+                                                 ? (shelly_command_pending ? COLOR_WARNING
+                                                                           : shelly_mode_color(&shelly))
+                                                 : COLOR_WARNING);
         lv_obj_set_style_text_color(s_ui.microwave_status, lv_color_hex(shelly_color), LV_PART_MAIN);
         lv_obj_set_style_text_color(s_ui.status_shelly, lv_color_hex(shelly_color), LV_PART_MAIN);
 
-        lv_label_set_text(
-            s_ui.shelly_connection_status,
-            shelly_state == SHELLY_READY ? "Shelly ansluten • live" : "Shelly ansluten • senaste värdet");
+        char guard_connection[96];
+        if (guard.tripped && !shelly.output_on) {
+            snprintf(
+                guard_connection,
+                sizeof(guard_connection),
+                "Autoskydd bröt över %.0f A • återinkoppla manuellt",
+                guard.limit_a);
+        } else if (shelly_state != SHELLY_READY) {
+            snprintf(guard_connection, sizeof(guard_connection), "Shelly ansluten • senaste värdet");
+        } else if (guard.protection_available) {
+            snprintf(
+                guard_connection,
+                sizeof(guard_connection),
+                "Autoskydd %.0f A • Tibber live",
+                guard.limit_a);
+        } else {
+            snprintf(guard_connection, sizeof(guard_connection), "Autoskydd väntar på färsk Tibberdata");
+        }
+        lv_label_set_text(s_ui.shelly_connection_status, guard_connection);
         lv_obj_set_style_text_color(
             s_ui.shelly_connection_status,
-            lv_color_hex(shelly_state == SHELLY_READY ? COLOR_MINT : COLOR_WARNING),
+            lv_color_hex(
+                guard.tripped && !shelly.output_on
+                    ? COLOR_DANGER
+                    : (shelly_state == SHELLY_READY && guard.protection_available ? COLOR_MINT : COLOR_WARNING)),
             LV_PART_MAIN);
-        lv_label_set_text(
-            s_ui.shelly_state_large,
-            shelly_command_pending ? "VÄXLAR…" : shelly_mode_label(&shelly));
+        lv_label_set_text(s_ui.shelly_state_large,
+                          guard.tripped && !shelly.output_on
+                              ? "AUTO STOPP"
+                              : (shelly_command_pending ? "VÄXLAR…" : shelly_mode_label(&shelly)));
         lv_obj_set_style_text_color(s_ui.shelly_state_large, lv_color_hex(shelly_color), LV_PART_MAIN);
 
         char power_text[32];
@@ -1288,13 +1356,26 @@ static void ui_timer(lv_timer_t *timer)
         lv_label_set_text(s_ui.shelly_power, power_text);
 
         char details_text[128];
-        snprintf(
-            details_text,
-            sizeof(details_text),
-            "Ström %.2f A  •  Spänning %.0f V\nShelly-temperatur %.1f C",
-            shelly.current_a,
-            shelly.voltage_v,
-            shelly.temperature_c);
+        if (guard.protection_available) {
+            snprintf(
+                details_text,
+                sizeof(details_text),
+                "Ström %.2f A  •  Spänning %.0f V\nShelly-temperatur %.1f C\nAutoskydd %.0f A • L1 %.1f A",
+                shelly.current_a,
+                shelly.voltage_v,
+                shelly.temperature_c,
+                guard.limit_a,
+                guard.current_l1_a);
+        } else {
+            snprintf(
+                details_text,
+                sizeof(details_text),
+                "Ström %.2f A  •  Spänning %.0f V\nShelly-temperatur %.1f C\nAutoskydd %.0f A • L1-data saknas",
+                shelly.current_a,
+                shelly.voltage_v,
+                shelly.temperature_c,
+                guard.limit_a);
+        }
         for (char *p = details_text; *p != '\0'; ++p) {
             if (*p == '.') *p = ',';
         }
@@ -1305,8 +1386,15 @@ static void ui_timer(lv_timer_t *timer)
             lv_label_set_text(
                 s_ui.shelly_control_label,
                 shelly.output_on ? "HÅLL I 2 SEK\nSTÄNG AV" : "HÅLL I 2 SEK\nSLÅ PÅ");
-            lv_label_set_text(s_ui.shelly_control_hint, "Efter långtryck får du bekräfta");
-            lv_obj_set_style_text_color(s_ui.shelly_control_hint, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
+            lv_label_set_text(
+                s_ui.shelly_control_hint,
+                guard.tripped && !shelly.output_on
+                    ? "Kontrollera L1 • slå sedan på manuellt"
+                    : "Efter långtryck får du bekräfta");
+            lv_obj_set_style_text_color(
+                s_ui.shelly_control_hint,
+                lv_color_hex(guard.tripped && !shelly.output_on ? COLOR_WARNING : COLOR_MUTED),
+                LV_PART_MAIN);
             lv_obj_set_style_border_color(
                 s_ui.shelly_control_button,
                 lv_color_hex(shelly.output_on ? COLOR_DANGER : COLOR_MINT),
@@ -1352,6 +1440,30 @@ static void ui_timer(lv_timer_t *timer)
         lv_label_set_text(s_ui.shelly_control_label, "INTE TILLGÄNGLIG");
         lv_label_set_text(s_ui.shelly_control_hint, "Anslutningen måste vara live");
         lv_obj_set_style_text_color(s_ui.shelly_control_hint, lv_color_hex(COLOR_WARNING), LV_PART_MAIN);
+    }
+
+    char guard_safety_text[128];
+    if (guard.tripped) {
+        snprintf(
+            guard_safety_text,
+            sizeof(guard_safety_text),
+            "Automatiskt bruten över %.0f A • kontrollera L1 före manuell återinkoppling.",
+            guard.limit_a);
+        lv_label_set_text(s_ui.shelly_safety_text, guard_safety_text);
+        lv_obj_set_style_text_color(s_ui.shelly_safety_text, lv_color_hex(COLOR_DANGER), LV_PART_MAIN);
+    } else if (guard.protection_available) {
+        snprintf(
+            guard_safety_text,
+            sizeof(guard_safety_text),
+            "Bryter över %.0f A när mikron kör • återinkoppling är alltid manuell.",
+            guard.limit_a);
+        lv_label_set_text(s_ui.shelly_safety_text, guard_safety_text);
+        lv_obj_set_style_text_color(s_ui.shelly_safety_text, lv_color_hex(COLOR_TEXT), LV_PART_MAIN);
+    } else {
+        lv_label_set_text(
+            s_ui.shelly_safety_text,
+            "Autoskydd väntar på färsk Tibberdata • simulerade värden styr aldrig reläet.");
+        lv_obj_set_style_text_color(s_ui.shelly_safety_text, lv_color_hex(COLOR_WARNING), LV_PART_MAIN);
     }
 
     lv_label_set_text(s_ui.status_network, network_setup_status_text());
