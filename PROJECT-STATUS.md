@@ -141,6 +141,9 @@ Funktionen är avsiktligt försiktig med datakvalitet: om Tibbervärdet är simu
 
 ## Planerade familjefunktioner
 
+- Ett **matlagningsläge** med minst fyra samtidiga, namngivna timrar, exempelvis ÄGG, POTATIS, BRÖD och UGN. Timrarna ska fortsätta oberoende av vald vy och energivakten ska alltid fortsätta arbeta i bakgrunden.
+- Timrarna bör använda monoton tid under normal drift så att en NTP-korrigering inte ändrar koktiden. Om återställning efter omstart önskas kan återstående sluttid dessutom sparas mot RTC/NVS.
+- Möjlig stektermometer: livsmedelsklassad typ-K-insticksprob via en I²C-omvandlare av typen MCP9600. Elektroniken ska sitta utanför ugnen; endast en värmetålig, uttryckligen livsmedelsavsedd prob och kabel får gå in i ugnsutrymmet.
 - Enkel gemensam inköpslista, exempelvis ”mjölken är slut”, med inmatning från mobil eller panel och valbar notis till de vuxna.
 - Kalenderförbättringar efter familjens praktiska användning.
 - Prisvisning och prisstyrning via Tibber, underordnad fas- och säkerhetsgränser.
@@ -171,6 +174,8 @@ Funktionen är avsiktligt försiktig med datakvalitet: om Tibbervärdet är simu
 - Placering av SMART/BYPASS.
 - Behov av RC-snubber, mellanrelä och lägesåterkoppling.
 - Slutlig säkerhetsbedömning av Shelly Plug S Gen3 tillsammans med mikron.
+- Hur matlagningstimrarna ska larma hörbart. Kortets officiella pinout och schema visar ingen summer eller högtalare som ännu kan betraktas som verifierad i vår BOX-enhet.
+- Om MCP9600 kan dela panelens befintliga I²C-buss stabilt vid 100 kHz med touch, RTC och I/O-expander, eller om temperaturdelen ska få en separat anslutning.
 - Exakt utformning av inköpslista och familjenotiser.
 - Fullständigt stöd för enskilda flyttade eller inställda kalenderförekomster i återkommande serier (`EXDATE`/`RECURRENCE-ID`).
 

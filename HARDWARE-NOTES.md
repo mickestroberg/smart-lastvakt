@@ -1,5 +1,15 @@
 # Hårdvarunoteringar
 
+## 2026-10-17 – Kandidat för stektermometer
+
+Panelen har en externt tillgänglig I²C-buss på **GPIO8/SDA** och **GPIO9/SCL**. Samma buss används redan av GT911-touch, PCF85063A-RTC och CH422G-expander. Nuvarande firmware initierar bussen med **400 kHz**.
+
+En lämplig kandidat för en framtida stektermometer är **MCP9600** tillsammans med en livsmedelsklassad typ-K-insticksprob. MCP9600 omvandlar termoelementets signal och lämnar både varm och kall temperatur via I²C. Standardadressen på Adafruits kort är `0x67`, vilket inte krockar med de adresser som nu används på panelen. MCP9600 stöder dock 100 kHz I²C, så den delade bussen måste sänkas till 100 kHz och touch, RTC samt I/O-expander därefter funktionstestas innan lösningen fastställs.
+
+Själva MCP9600-kortet ska placeras utanför ugnen. Endast en värmetålig prob och kabel som uttryckligen är avsedd för livsmedel och ugnsbruk får föras in i ugnen; en vanlig kapslad hobbygivare eller generisk ”rostfri” termoelementprob är inte automatiskt livsmedelssäker.
+
+Källor: [Waveshare – panelens gränssnitt och I²C-pinnar](https://docs.waveshare.com/ESP32-S3-Touch-LCD-4.3B), [Microchip MCP9600](https://www.microchip.com/en-us/product/mcp9600) och [Adafruit MCP9600-guide](https://learn.adafruit.com/adafruit-mcp9600-i2c-thermocouple-amplifier/overview).
+
 ## 2026-10-17 – Mikrovågsugn och Shelly Plug S Gen3
 
 Den installerade mikrovågsugnen är en **IKEA RAFFINERAD**. Apparatens egen typskylt anger **2100 W**. Den generella RAFFINERAD-manualen anger 2300 W märkeffekt, 1000 W mikrovågseffekt och 800 W grill; den enhetsspecifika typskylten används därför som märkdata för just denna apparat. Mikrovågseffekten 1000 W är avgiven effekt till maten och ska inte förväxlas med elektrisk ineffekt.
