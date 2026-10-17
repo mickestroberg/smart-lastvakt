@@ -17,8 +17,10 @@ En frikopplad, datorbaserad referensmodell för framtida tvåstegsstyrning finns
 - Kortets batteribackade PCF85063A används vid start; NTP rättar tiden efter Wi-Fi-anslutning.
 - Tryck på **SMART LASTVAKT** för en ren systemstatussida med Wi-Fi, tidskälla, Tibber, kalender och en QR-kod till enhetens lokala installationssida.
 - Nästa händelse från familjens privata Google-kalender visas direkt på klockvyn. Tryck på kalenderfältet för en egen sida med de sex närmaste händelserna.
+- Vid ett tillfälligt synkroniseringsfel visas senast hämtade kalenderdata vidare utan felvarning. Panelen jämför händelsernas sluttid med systemtiden och döljer dem automatiskt när de har passerat medan den fortsätter försöka uppdatera i bakgrunden.
 - Kalenderemoji som den inbyggda skärmfonten inte kan rita ersätts med en ren punktmarkör i stället för tomma teckenrutor.
 - Kalendern uppdateras var 15:e minut och vanliga dagliga, veckovisa, månatliga och årliga upprepningar stöds.
+- Kalendercachen ligger i arbetsminnet och fylls därför på nytt efter omstart. Enskilda flyttade eller inställda förekomster i en återkommande serie (`EXDATE`/`RECURRENCE-ID`) stöds ännu inte fullt ut.
 - Tibber GraphQL-abonnemang med `currentL1`, `currentL2` och `currentL3` i realtid.
 - Lokal mätning från Shelly Plug S Gen3: **REDO**, **KÖR** eller **STRÖMLÖS** och aktuell effekt på huvudvyn samt ström, spänning och temperatur på en egen Shelly-sida.
 - Ensidigt mikroskydd: när Shellyn mäter minst 500 W och färsk Tibberdata visar att total L1 är över **20,0 A** begär panelen automatiskt **AV**. Exakt 20,0 A tillåts.

@@ -11,9 +11,9 @@ Datum: 2026-10-17
 - LVGL: 8.4.0
 - Flash: 16 MB QIO, 80 MHz
 - PSRAM: 8 MB OPI, 80 MHz
-- Appbild: 1 592 560 byte
+- Appbild: 1 592 528 byte
 - Apppartition: 8 388 608 byte
-- Ledigt i apppartitionen: 6 796 048 byte (81 %)
+- Ledigt i apppartitionen: 6 796 080 byte (81 %)
 
 ESP-IDF-bygget slutfördes utan kompilerings- eller länkfel. Bootloader, partitionstabell och appbild skrevs till kortet och esptool verifierade hashen för samtliga skrivningar.
 
@@ -50,6 +50,8 @@ Samtliga **17** datorbaserade policytester passerade. De nya mikrovågstesterna 
 
 Efter flash verifierades att panelen startade utan panik, anslöt till Wi-Fi, synkroniserade NTP, startade Tibbers websocket, läste kalendern, hämtade väder och efter automatisk återprovning anslöt till Shellyn med reläet fortsatt på och 0 W last.
 
+Kalenderns avslappnade cachebeteende byggdes och flashades 2026-10-17. Startloggen verifierade en normal lyckad hämtning av sex händelser efter NTP-synkronisering. Koden behåller senast lyckade cache utan användarvarning vid tillfälliga synkfel och filtrerar lokalt bort en post när dess sparade sluttid passerar. Ett misslyckat kalenderanrop framkallades inte med avsikt på den verkliga panelen; den felvägen återstår därför att observera vid nästa naturliga, tillfälliga synkstörning.
+
 Senare 2026-10-17 fältprovades funktionen under verklig hushållslast. Elpatronen var igång, ugnen belastade L1 och mikron användes för att smälta smör. Mikron blev automatiskt strömlös efter ungefär 30 sekunder. En familjemedlem hittade därefter reläsidan och lyckades med den manuella återinkopplingen utan instruktioner. Det verifierar det avsedda användarbeteendet från automatisk brytning till mänskligt kvitterad återinkoppling. Ingen logg eller tidsserie fångades under provet, så cirka 30 sekunder ska inte tolkas som vaktens reaktionstid från att L1 passerade 20 A.
 
 ## Fabriksbackup
@@ -68,4 +70,4 @@ Backupen hålls utanför Git-förrådet eftersom den kan innehålla kortspecifik
 |---|---:|---:|---|
 | `bootloader.bin` | `0x0000` | 22 288 byte | `138E55F60773EB37A68FC357992D028E5B43CC39A17AD6DD1300E82963BDBD1D` |
 | `partition-table.bin` | `0x8000` | 3 072 byte | `776239783A4A8CE1386FE68450F1D70759738C7269D8A8290837F45BC397D4A7` |
-| `lastvakt_display.bin` | `0x10000` | 1 592 560 byte | `E61AA76850FDBEF33DD492C7B1B05F99D87214BD67A01F2EC170E301B09BA2A2` |
+| `lastvakt_display.bin` | `0x10000` | 1 592 528 byte | `6B8B51CF90F69582EE9373C9B75DBEA22A4530496F718C8BC3A4FE55FBDD3845` |

@@ -51,6 +51,7 @@ Ett efterföljande treminutersprov med en liter vatten gav högst **1723,4 W**, 
 - Automatisk växling till fasvyn i röd zon och återgång efter åtta sekunder.
 - Nästa kalenderhändelse på huvudsidan och en tryckbar sida med sex kommande händelser.
 - Privat Google-iCal, inklusive vanliga återkommande händelser.
+- Avslappnad kalendercache: tillfälliga synkfel visas inte för familjen när användbar cache finns, och passerade poster filtreras lokalt mot systemtiden.
 - Utetemperatur och väderikon för Älvsjö via Open-Meteo.
 - Systemstatussida via rubriken **SMART LASTVAKT**, inklusive nätstatus, tidskälla och QR-kod till installationssidan.
 - Shelly-status och effekt på huvudsidan samt en egen detaljsida med ström, spänning och temperatur.
@@ -171,6 +172,7 @@ Funktionen är avsiktligt försiktig med datakvalitet: om Tibbervärdet är simu
 - Behov av RC-snubber, mellanrelä och lägesåterkoppling.
 - Slutlig säkerhetsbedömning av Shelly Plug S Gen3 tillsammans med mikron.
 - Exakt utformning av inköpslista och familjenotiser.
+- Fullständigt stöd för enskilda flyttade eller inställda kalenderförekomster i återkommande serier (`EXDATE`/`RECURRENCE-ID`).
 
 ## Dokumentkarta
 

@@ -287,6 +287,7 @@ static void insert_event(
         .available = true,
         .all_day = event->all_day,
         .start = start,
+        .end = start + event_duration(event),
     };
     snprintf(events[position].title, sizeof(events[position].title), "%s", event->title);
     *count = new_count;
@@ -562,12 +563,9 @@ void calendar_source_init(void)
 
 calendar_source_state_t calendar_source_get(calendar_event_t *event)
 {
-    portENTER_CRITICAL(&s_lock);
-    const calendar_source_state_t state = s_state;
-    if (event != NULL) {
-        *event = s_event_count > 0 ? s_events[0] : (calendar_event_t){0};
-    }
-    portEXIT_CRITICAL(&s_lock);
+    size_t count = 0;
+    const calendar_source_state_t state = calendar_source_get_events(event, event != NULL ? 1 : 0, &count);
+    if (event != NULL && count == 0) *event = (calendar_event_t){0};
     return state;
 }
 
@@ -576,11 +574,18 @@ calendar_source_state_t calendar_source_get_events(
     size_t capacity,
     size_t *count)
 {
+    const time_t now = time(NULL);
     portENTER_CRITICAL(&s_lock);
     const calendar_source_state_t state = s_state;
-    const size_t copy_count = s_event_count < capacity ? s_event_count : capacity;
-    if (events != NULL && copy_count > 0) {
-        memcpy(events, s_events, copy_count * sizeof(*events));
+    size_t copy_count = 0;
+    for (size_t i = 0; i < s_event_count && copy_count < capacity; ++i) {
+        if (!s_events[i].available || (s_events[i].end > 0 && s_events[i].end <= now)) {
+            continue;
+        }
+        if (events != NULL) {
+            events[copy_count] = s_events[i];
+        }
+        ++copy_count;
     }
     if (count != NULL) *count = copy_count;
     portEXIT_CRITICAL(&s_lock);

@@ -17,6 +17,7 @@ typedef struct {
     bool available;
     bool all_day;
     time_t start;
+    time_t end;
     char title[96];
 } calendar_event_t;
 

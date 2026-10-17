@@ -1487,7 +1487,7 @@ static void ui_timer(lv_timer_t *timer)
         calendar_events,
         CALENDAR_EVENT_LIMIT,
         &calendar_event_count);
-    if (calendar_state == CALENDAR_SOURCE_READY && calendar_event_count > 0) {
+    if (calendar_event_count > 0) {
         char event_text[160];
         format_calendar_event(event_text, sizeof(event_text), &calendar_events[0]);
         lv_label_set_text(s_ui.calendar_event, event_text);
@@ -1495,15 +1495,12 @@ static void ui_timer(lv_timer_t *timer)
     } else if (calendar_state == CALENDAR_SOURCE_READY) {
         lv_label_set_text(s_ui.calendar_event, "Inga kommande händelser");
         lv_obj_set_style_text_color(s_ui.calendar_event, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
-    } else if (calendar_state == CALENDAR_SOURCE_SYNCING) {
-        lv_label_set_text(s_ui.calendar_event, "Hämtar familjekalendern…");
-        lv_obj_set_style_text_color(s_ui.calendar_event, lv_color_hex(COLOR_CYAN), LV_PART_MAIN);
-    } else if (calendar_state == CALENDAR_SOURCE_ERROR) {
-        lv_label_set_text(s_ui.calendar_event, "Kalendern kunde inte hämtas");
-        lv_obj_set_style_text_color(s_ui.calendar_event, lv_color_hex(COLOR_WARNING), LV_PART_MAIN);
-    } else {
+    } else if (calendar_state == CALENDAR_SOURCE_DISABLED) {
         lv_label_set_text(s_ui.calendar_event, "Lägg till iCal-adressen i Inställningar");
         lv_obj_set_style_text_color(s_ui.calendar_event, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
+    } else {
+        lv_label_set_text(s_ui.calendar_event, "Hämtar familjekalendern…");
+        lv_obj_set_style_text_color(s_ui.calendar_event, lv_color_hex(COLOR_CYAN), LV_PART_MAIN);
     }
 
     for (size_t i = 0; i < CALENDAR_EVENT_LIMIT; ++i) {
@@ -1524,30 +1521,29 @@ static void ui_timer(lv_timer_t *timer)
         lv_obj_add_flag(s_ui.calendar_empty, LV_OBJ_FLAG_HIDDEN);
     } else {
         const char *empty_text = "Inga kommande händelser";
-        if (calendar_state == CALENDAR_SOURCE_SYNCING) empty_text = "Hämtar familjekalendern…";
-        else if (calendar_state == CALENDAR_SOURCE_ERROR) empty_text = "Kalendern kunde inte hämtas";
-        else if (calendar_state == CALENDAR_SOURCE_DISABLED) empty_text = "Lägg till kalendern i Inställningar";
+        if (calendar_state == CALENDAR_SOURCE_DISABLED) empty_text = "Lägg till kalendern i Inställningar";
+        else if (calendar_state != CALENDAR_SOURCE_READY) empty_text = "Hämtar familjekalendern…";
         lv_label_set_text(s_ui.calendar_empty, empty_text);
         lv_obj_clear_flag(s_ui.calendar_empty, LV_OBJ_FLAG_HIDDEN);
     }
 
     const char *calendar_status = "Nästa händelser";
-    if (calendar_state == CALENDAR_SOURCE_SYNCING) calendar_status = "Uppdaterar kalendern…";
-    else if (calendar_state == CALENDAR_SOURCE_ERROR) calendar_status = "Senast hämtade händelser • anslutningsfel";
+    if (calendar_event_count == 0 && calendar_state != CALENDAR_SOURCE_READY &&
+        calendar_state != CALENDAR_SOURCE_DISABLED) {
+        calendar_status = "Uppdaterar kalendern…";
+    }
     lv_label_set_text(s_ui.calendar_status, calendar_status);
-    lv_obj_set_style_text_color(
-        s_ui.calendar_status,
-        lv_color_hex(calendar_state == CALENDAR_SOURCE_ERROR ? COLOR_WARNING : COLOR_MUTED),
-        LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_ui.calendar_status, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
 
     const char *status_calendar = "Kalendern är ansluten";
-    if (calendar_state == CALENDAR_SOURCE_SYNCING) status_calendar = "Hämtar kalenderhändelser…";
-    else if (calendar_state == CALENDAR_SOURCE_ERROR) status_calendar = "Kalendern kunde inte hämtas";
-    else if (calendar_state == CALENDAR_SOURCE_DISABLED) status_calendar = "Kalendern är inte konfigurerad";
+    if (calendar_state == CALENDAR_SOURCE_DISABLED) status_calendar = "Kalendern är inte konfigurerad";
+    else if (calendar_event_count == 0 && calendar_state != CALENDAR_SOURCE_READY) {
+        status_calendar = "Kalendern uppdateras automatiskt";
+    }
     lv_label_set_text(s_ui.status_calendar, status_calendar);
     lv_obj_set_style_text_color(
         s_ui.status_calendar,
-        lv_color_hex(calendar_state == CALENDAR_SOURCE_READY ? COLOR_MINT : COLOR_WARNING),
+        lv_color_hex(calendar_state == CALENDAR_SOURCE_DISABLED ? COLOR_WARNING : COLOR_MINT),
         LV_PART_MAIN);
 
     phase_sample_t sample = phase_source_read();
