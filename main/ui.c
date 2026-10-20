@@ -808,7 +808,7 @@ static void create_clock_view(lv_obj_t *root)
     lv_obj_align(s_ui.source_badge, LV_ALIGN_TOP_RIGHT, -36, 22);
     style_panel(s_ui.source_badge, 0x392814, 17);
     s_ui.source_badge_label = make_label(s_ui.source_badge, &lv_font_lastvakt_12, COLOR_WARNING);
-    lv_label_set_text(s_ui.source_badge_label, "SIMULERING");
+    lv_label_set_text(s_ui.source_badge_label, "ANSLUTER");
     lv_obj_center(s_ui.source_badge_label);
 
     s_ui.clock_large = make_label(s_ui.clock_view, &lv_font_lastvakt_clock_96, COLOR_TEXT);
@@ -944,7 +944,7 @@ static void create_phase_view(lv_obj_t *root)
     lv_obj_align(title, LV_ALIGN_TOP_LEFT, 36, 23);
 
     s_ui.phase_source_status = make_label(s_ui.phase_view, &lv_font_lastvakt_12, COLOR_WARNING);
-    lv_label_set_text(s_ui.phase_source_status, "TIBBER INTE KONFIGURERAD • SIMULERAR");
+    lv_label_set_text(s_ui.phase_source_status, "VÄNTAR PÅ TIBBER");
     lv_obj_align(s_ui.phase_source_status, LV_ALIGN_TOP_LEFT, 36, 54);
 
     s_ui.clock_small = make_label(s_ui.phase_view, &lv_font_lastvakt_24, COLOR_TEXT);
@@ -1584,7 +1584,7 @@ static void create_cooking_view(lv_obj_t *root)
     lv_obj_align(title, LV_ALIGN_TOP_LEFT, 36, 21);
 
     s_ui.cooking_phase_source = make_label(s_ui.cooking_view, &lv_font_lastvakt_12, COLOR_CYAN);
-    lv_label_set_text(s_ui.cooking_phase_source, "TIBBER LIVE");
+    lv_label_set_text(s_ui.cooking_phase_source, "ANSLUTER");
     lv_obj_align(s_ui.cooking_phase_source, LV_ALIGN_TOP_LEFT, 171, 31);
 
     s_ui.cooking_clock = make_label(s_ui.cooking_view, &lv_font_lastvakt_20, COLOR_TEXT);
@@ -1639,15 +1639,27 @@ static void create_timer_alarm(lv_obj_t *root)
     lv_obj_add_flag(s_ui.timer_alarm_button, LV_OBJ_FLAG_HIDDEN);
 }
 
-static int highest_phase(const phase_sample_t *sample)
+static int highest_fresh_phase(const phase_sample_t *sample)
 {
-    int highest = 0;
-    for (int i = 1; i < 3; ++i) {
-        if (sample->percent[i] > sample->percent[highest]) {
+    int highest = -1;
+    for (int i = 0; i < 3; ++i) {
+        if (!sample->fresh[i]) continue;
+        if (highest < 0 || sample->percent[i] > sample->percent[highest]) {
             highest = i;
         }
     }
     return highest;
+}
+
+static const char *phase_source_badge_text(phase_source_state_t state)
+{
+    switch (state) {
+        case PHASE_SOURCE_LIVE: return "TIBBER LIVE";
+        case PHASE_SOURCE_PARTIAL: return "DELVIS LIVE";
+        case PHASE_SOURCE_STALE: return "SENASTE VÄRDE";
+        case PHASE_SOURCE_UNAVAILABLE:
+        default: return "INGEN DATA";
+    }
 }
 
 static const char *shelly_mode_label(const shelly_sample_t *sample)
@@ -1996,7 +2008,7 @@ static void ui_timer(lv_timer_t *timer)
     } else {
         lv_label_set_text(
             s_ui.shelly_safety_text,
-            "Autoskydd väntar på färsk Tibberdata • simulerade värden styr aldrig reläet.");
+            "Autoskydd väntar på färsk Tibberdata • gamla värden styr aldrig reläet.");
         lv_obj_set_style_text_color(s_ui.shelly_safety_text, lv_color_hex(COLOR_WARNING), LV_PART_MAIN);
     }
 
@@ -2081,39 +2093,51 @@ static void ui_timer(lv_timer_t *timer)
         LV_PART_MAIN);
 
     phase_sample_t sample = phase_source_read();
-    lv_label_set_text(s_ui.source_badge_label, sample.simulated ? "SIMULERING" : "TIBBER LIVE");
+    const bool phase_source_live = sample.state == PHASE_SOURCE_LIVE;
+    const char *source_badge_text = phase_source_badge_text(sample.state);
+    lv_label_set_text(s_ui.source_badge_label, source_badge_text);
     lv_label_set_text(s_ui.phase_source_status, phase_source_status_text());
-    lv_obj_set_style_bg_color(s_ui.source_badge, lv_color_hex(sample.simulated ? 0x392814 : 0x12392E), LV_PART_MAIN);
-    lv_obj_set_style_text_color(s_ui.source_badge_label, lv_color_hex(sample.simulated ? COLOR_WARNING : COLOR_MINT), LV_PART_MAIN);
-    lv_obj_set_style_text_color(s_ui.phase_source_status, lv_color_hex(sample.simulated ? COLOR_WARNING : COLOR_MINT), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_ui.source_badge, lv_color_hex(phase_source_live ? 0x12392E : 0x392814), LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_ui.source_badge_label, lv_color_hex(phase_source_live ? COLOR_MINT : COLOR_WARNING), LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_ui.phase_source_status, lv_color_hex(phase_source_live ? COLOR_MINT : COLOR_WARNING), LV_PART_MAIN);
     lv_label_set_text(s_ui.status_tibber, phase_source_status_text());
     lv_obj_set_style_text_color(
         s_ui.status_tibber,
-        lv_color_hex(sample.simulated ? COLOR_WARNING : COLOR_MINT),
+        lv_color_hex(phase_source_live ? COLOR_MINT : COLOR_WARNING),
         LV_PART_MAIN);
-    const int highest = highest_phase(&sample);
-    const load_zone_t highest_zone = load_zone_for_current(sample.current_a[highest], sample.main_fuse_a);
+    const int highest = highest_fresh_phase(&sample);
+    const load_zone_t highest_zone = highest >= 0
+                                         ? load_zone_for_current(sample.current_a[highest], sample.main_fuse_a)
+                                         : LOAD_ZONE_GREEN;
     for (int i = 0; i < 3; ++i) {
         char amps[20];
         char percent[16];
-        format_amps(amps, sizeof(amps), sample.current_a[i]);
-        snprintf(percent, sizeof(percent), "%d %%", (int)(sample.percent[i] + 0.5f));
+        if (sample.available[i]) {
+            format_amps(amps, sizeof(amps), sample.current_a[i]);
+            snprintf(percent, sizeof(percent), "%d %%", (int)(sample.percent[i] + 0.5f));
+        } else {
+            snprintf(amps, sizeof(amps), "--");
+            snprintf(percent, sizeof(percent), "--");
+        }
         lv_label_set_text(s_ui.phase_amp[i], amps);
         lv_label_set_text(s_ui.phase_percent[i], percent);
         lv_bar_set_value(
             s_ui.phase_bar[i],
-            sample.percent[i] > 100.0f ? 100 : (int)sample.percent[i],
+            sample.available[i] ? (sample.percent[i] > 100.0f ? 100 : (int)sample.percent[i]) : 0,
             LV_ANIM_ON);
 
         const load_zone_t zone = load_zone_for_current(sample.current_a[i], sample.main_fuse_a);
-        const uint32_t zone_color = load_zone_color(zone);
+        const uint32_t zone_color = sample.fresh[i] ? load_zone_color(zone) : COLOR_MUTED;
         lv_obj_set_style_bg_color(
             s_ui.phase_bar[i],
             lv_color_hex(zone_color),
             LV_PART_INDICATOR);
         lv_obj_set_style_text_color(s_ui.phase_amp[i], lv_color_hex(zone_color), LV_PART_MAIN);
         lv_obj_set_style_text_color(s_ui.phase_percent[i], lv_color_hex(zone_color), LV_PART_MAIN);
-        lv_obj_set_style_border_width(s_ui.phase_card[i], zone == LOAD_ZONE_GREEN ? 0 : (zone == LOAD_ZONE_RED ? 2 : 1), LV_PART_MAIN);
+        lv_obj_set_style_border_width(
+            s_ui.phase_card[i],
+            !sample.fresh[i] || zone == LOAD_ZONE_GREEN ? 0 : (zone == LOAD_ZONE_RED ? 2 : 1),
+            LV_PART_MAIN);
         lv_obj_set_style_border_color(s_ui.phase_card[i], lv_color_hex(zone_color), LV_PART_MAIN);
 
         char cooking_phase[28];
@@ -2123,36 +2147,47 @@ static void ui_timer(lv_timer_t *timer)
         lv_obj_set_style_border_color(s_ui.cooking_phase_card[i], lv_color_hex(zone_color), LV_PART_MAIN);
         lv_obj_set_style_border_width(
             s_ui.cooking_phase_card[i],
-            zone == LOAD_ZONE_GREEN ? 1 : (zone == LOAD_ZONE_RED ? 3 : 2),
+            !sample.fresh[i] || zone == LOAD_ZONE_GREEN ? 1 : (zone == LOAD_ZONE_RED ? 3 : 2),
             LV_PART_MAIN);
     }
 
-    lv_label_set_text(s_ui.cooking_phase_source, sample.simulated ? "SIMULERING" : "TIBBER LIVE");
+    lv_label_set_text(s_ui.cooking_phase_source, source_badge_text);
     lv_obj_set_style_text_color(
         s_ui.cooking_phase_source,
-        lv_color_hex(sample.simulated ? COLOR_WARNING : COLOR_MINT),
+        lv_color_hex(phase_source_live ? COLOR_MINT : COLOR_WARNING),
         LV_PART_MAIN);
 
     char highest_amps[20];
     char load_value[40];
-    format_amps(highest_amps, sizeof(highest_amps), sample.current_a[highest]);
-    snprintf(load_value, sizeof(load_value), "L%d  %s", highest + 1, highest_amps);
+    if (highest >= 0) {
+        format_amps(highest_amps, sizeof(highest_amps), sample.current_a[highest]);
+        snprintf(load_value, sizeof(load_value), "L%d  %s", highest + 1, highest_amps);
+    } else {
+        snprintf(load_value, sizeof(load_value), "--");
+    }
     lv_label_set_text(s_ui.load_value, load_value);
 
-    const uint32_t highest_color = load_zone_color(highest_zone);
+    const uint32_t highest_color = highest >= 0 ? load_zone_color(highest_zone) : COLOR_WARNING;
     lv_obj_set_style_text_color(s_ui.load_status, lv_color_hex(highest_color), LV_PART_MAIN);
     lv_obj_set_style_text_color(s_ui.load_value, lv_color_hex(highest_color), LV_PART_MAIN);
     lv_obj_set_style_text_color(s_ui.phase_alert_status, lv_color_hex(highest_color), LV_PART_MAIN);
-    lv_obj_set_style_border_width(s_ui.load_panel, highest_zone == LOAD_ZONE_GREEN ? 0 : 2, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_ui.load_panel, highest < 0 || highest_zone == LOAD_ZONE_GREEN ? 0 : 2, LV_PART_MAIN);
     lv_obj_set_style_border_color(s_ui.load_panel, lv_color_hex(highest_color), LV_PART_MAIN);
 
-    if (highest_zone == LOAD_ZONE_RED) {
+    if (highest >= 0 && highest_zone == LOAD_ZONE_RED) {
         lv_label_set_text(s_ui.load_status, "STARTA INGET MER");
         lv_label_set_text(s_ui.phase_alert_status, "STARTA INGET MER");
         s_ui.last_over_threshold_ms = now_ms;
         show_phase_view(true);
     } else {
-        const char *status_text = highest_zone == LOAD_ZONE_ORANGE ? "Undvik stora laster" : "Gott om marginal";
+        const char *status_text;
+        if (highest >= 0 && highest_zone == LOAD_ZONE_ORANGE) {
+            status_text = "Undvik stora laster";
+        } else if (!phase_source_live) {
+            status_text = "Väntar på komplett Tibberdata";
+        } else {
+            status_text = "Gott om marginal";
+        }
         lv_label_set_text(s_ui.load_status, status_text);
         lv_label_set_text(s_ui.phase_alert_status, status_text);
 

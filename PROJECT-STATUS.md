@@ -1,6 +1,6 @@
 # Projektstatus – Smart lastvakt
 
-Senast uppdaterad: **2026-10-17**
+Senast uppdaterad: **2026-10-20**
 
 Detta är projektets gemensamma överlämningsdokument. En ny tråd ska kunna börja här utan att läsa hela chatthistoriken. Tekniska detaljer finns i dokumenten som länkas nedan.
 
@@ -47,6 +47,8 @@ Ett efterföljande treminutersprov med en liter vatten gav högst **1723,4 W**, 
 - Stor klocka, svenskt datum och automatisk CET/CEST.
 - Batteribackad RTC vid start och NTP-korrigering efter nätanslutning.
 - Tibber Pulse i realtid för L1, L2 och L3.
+- Robust Tibber-återanslutning vid ren stängning, nätverks- eller protokollfel, uteblivet anslutningskvitto och när någon fas saknas eller blir äldre än 30 sekunder. Varje ny anslutning måste leverera nya värden innan en fas räknas som live.
+- Vid Tibberavbrott visas senast verkliga fasvärden grått i högst fem minuter och därefter `--`; firmware växlar inte automatiskt till simulerade värden.
 - Färgzoner: grönt till och med 10 A, orange över 10 A till och med 17,5 A och rött över 17,5 A.
 - Fyra generiska och parallella matlagningstimrar med inställning i timmar och minuter, upprepad ändring vid långtryck samt start, paus, fortsättning, nollställning och kvittering.
 - Timerlogiken använder monoton tid och fortsätter oberoende av vald sida. Tillstånden ligger endast i RAM och återställs vid omstart.
@@ -64,7 +66,7 @@ Ett efterföljande treminutersprov med en liter vatten gav högst **1723,4 W**, 
 - Svenska tecken i Shelly-lägena och ersättning av kalenderemoji som saknar skärmglyf.
 - Lokal installationssida för Wi-Fi, Tibber-token, privat kalenderadress och Shelly-adress.
 
-20 A-versionen kompilerades, flashades och startverifierades på den verkliga panelen 2026-10-17. Senare samma dag gav verklig samtidig hushållslast ett lyckat fältprov av både automatisk frånkoppling och manuell återinkoppling. Timerutgåvan byggdes därefter, flashades via COM11 och startverifierades med övriga livekällor anslutna. Samtliga 26 datorbaserade tester passerade. Se [README.md](README.md) för användning och [BUILD-REPORT.md](BUILD-REPORT.md) för verifierade detaljer.
+20 A-versionen kompilerades, flashades och startverifierades på den verkliga panelen 2026-10-17. Senare samma dag gav verklig samtidig hushållslast ett lyckat fältprov av både automatisk frånkoppling och manuell återinkoppling. Timerutgåvan byggdes därefter, flashades via COM11 och startverifierades med övriga livekällor anslutna. Den robustare Tibber-klienten byggdes och flashades 2026-10-20; startloggen verifierade Wi-Fi, Shelly, NTP, kalender, väder, godkänd Tibber-handshake och en komplett ny uppsättning L1/L2/L3 utan omstart eller panik. Samtliga 26 datorbaserade tester passerade. Se [README.md](README.md) för användning och [BUILD-REPORT.md](BUILD-REPORT.md) för verifierade detaljer.
 
 ## Hårdvarufri utveckling
 
@@ -87,7 +89,7 @@ Uppgifterna lagras i ESP32-enhetens NVS och matas in via den lokala installation
 
 ### Display och mätdata
 
-- Displayen får visa simulerade fasvärden när Tibber saknas, men simulerade värden får **aldrig** användas för reläbeslut.
+- Automatisk simulering används inte. Vid Tibberavbrott får displayen endast visa senast mottagna verkliga värden med tydlig markering och begränsad livslängd, eller `--` när de inte längre är användbara. En framtida uttrycklig demoläge-simulering måste hållas helt skild från reläbeslut.
 - All relästyrning ska kontrollera mätvärdets ålder och att alla nödvändiga fasvärden är giltiga.
 - Fasgränser och säkerhetsbegränsning ska ha företräde framför prisoptimering.
 - En smart styrning får endast begränsa tillåten last; den får aldrig tvinga värme eller annan last att starta.
@@ -96,7 +98,7 @@ Uppgifterna lagras i ESP32-enhetens NVS och matas in via den lokala installation
 
 - Total L1 får vara högst **20,0 A** tillsammans med mikron; automatisk frånkoppling sker först över gränsen.
 - Mikron bedöms vara aktiv när Shellyn mäter minst **500 W**.
-- Tibbervärdet måste vara verkligt och högst **5 sekunder** gammalt för att få styra reläet.
+- Tibbervärdet måste vara verkligt, komma från den aktuella WebSocket-sessionen och vara högst **5 sekunder** gammalt för att få styra reläet.
 - Automatiken kan bara begära **AV**. Återinkoppling är alltid manuell med två sekunders långtryck och separat bekräftelse.
 - Detta är laststyrning med nätverks- och mätfördröjning, inte ett överströmsskydd och inte en ersättning för 25 A-huvudsäkringen.
 
@@ -140,7 +142,7 @@ Den bekräftade PF-modellen har enligt märkning och manual:
 
 Nuvarande firmware ger övervakning, skyddad manuell relästyrning och automatisk **frånkoppling** enligt 20 A-regeln ovan. Efter auto-stopp ligger uttaget av tills en människa återinkopplar det på reläsidan. Systemet innehåller ingen automatisk tillkoppling och kan därför inte starta en matlagningscykel efter att lasten har sjunkit.
 
-Funktionen är avsiktligt försiktig med datakvalitet: om Tibbervärdet är simulerat, saknas eller är äldre än fem sekunder gör automatiken ingenting och visar att skyddet inte är tillgängligt. Den 2026-10-17 provades hela användarkedjan i verklig drift: elpatronen var igång, ugnen belastade L1 och mikron startades. Mikron blev automatiskt strömlös efter ungefär 30 sekunder, varefter användaren hittade den manuella återinkopplingen på panelen utan instruktioner. Ingen tidsserie sparades, så de 30 sekunderna är inte vaktens uppmätta reaktionstid; tidpunkten då L1 faktiskt passerade 20 A är okänd. IKEA-manualens formulering om extern styrning och Shellyns märkning för resistiv last är fortfarande öppna frågor för permanent användning.
+Funktionen är avsiktligt försiktig med datakvalitet: om Tibbervärdet saknas, tillhör en tidigare anslutning eller är äldre än fem sekunder gör automatiken ingenting och visar att skyddet inte är tillgängligt. Den 2026-10-17 provades hela användarkedjan i verklig drift: elpatronen var igång, ugnen belastade L1 och mikron startades. Mikron blev automatiskt strömlös efter ungefär 30 sekunder, varefter användaren hittade den manuella återinkopplingen på panelen utan instruktioner. Ingen tidsserie sparades, så de 30 sekunderna är inte vaktens uppmätta reaktionstid; tidpunkten då L1 faktiskt passerade 20 A är okänd. IKEA-manualens formulering om extern styrning och Shellyns märkning för resistiv last är fortfarande öppna frågor för permanent användning.
 
 ## Matlagningstimrar
 

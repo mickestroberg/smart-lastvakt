@@ -1,6 +1,6 @@
 # Byggrapport – Smart lastvakt
 
-Datum: 2026-10-17
+Datum: 2026-10-20
 
 ## Resultat
 
@@ -11,9 +11,9 @@ Datum: 2026-10-17
 - LVGL: 8.4.0
 - Flash: 16 MB QIO, 80 MHz
 - PSRAM: 8 MB OPI, 80 MHz
-- Appbild: 1 597 888 byte (`0x1861C0`)
+- Appbild: 1 597 184 byte (`0x185F00`)
 - Apppartition: 8 388 608 byte
-- Ledigt i apppartitionen: 6 790 720 byte (81 %)
+- Ledigt i apppartitionen: 6 791 424 byte (81 %)
 
 ESP-IDF-bygget slutfördes utan kompilerings- eller länkfel. Bootloader, partitionstabell och appbild skrevs till kortet och esptool verifierade hashen för samtliga skrivningar.
 
@@ -33,7 +33,7 @@ Efter nätverkskonfiguration verifierades även:
 - återanslutning till sparat Wi-Fi och svensk tid via NTP;
 - godkänd Tibber-token och hämtning av ett hem med realtidsmätning;
 - validerad TLS-kedja för både Tibber API och live-webbsocket;
-- startad live-webbsocket utan återanslutningsfel under kontrollperioden;
+- godkänd Tibber WebSocket-handshake, skickat GraphQL-abonnemang och mottagen komplett ny uppsättning L1/L2/L3 utan återanslutningsfel under kontrollperioden;
 - NTP-synkroniserad svensk tid och automatisk minutvis NTP-återprovning om den första synkroniseringen misslyckas;
 - validerad TLS-kedja till Google Kalender, fullständig iCal-hämtning och hittad nästa händelse;
 - inläsning och sortering av sex kommande kalenderhändelser till den tryckbara kalenderöversikten;
@@ -44,7 +44,11 @@ Efter nätverkskonfiguration verifierades även:
 - egen 48-punktsfont med svenska tecken för Shelly-lägena samt filtrering som ersätter kalenderemoji utan skärmglyf med en punktmarkör;
 - systemstatussida med aktuell nätverksadress, tydlig tidskälla, Tibber- och kalenderstatus samt QR-kod till installationssidan.
 
-TLS-arbetsminnet placeras i kortets PSRAM och dynamiska TLS-buffertar används. Samtidigt reserveras internt DMA-minne och LVGL:s delbuffert är anpassad så att kalenderhämtning, flimmerfri bild och Tibbers liveanslutning fungerar samtidigt. Om Tibber Pulse tillfälligt saknar data fortsätter vyn med simulerade värden och försöker återansluta automatiskt.
+TLS-arbetsminnet placeras i kortets PSRAM och dynamiska TLS-buffertar används. Samtidigt reserveras internt DMA-minne och LVGL:s delbuffert är anpassad så att kalenderhämtning, flimmerfri bild och Tibbers liveanslutning fungerar samtidigt.
+
+Tibber-klienten återskapar anslutningen efter ren WebSocket-stängning, nätverks- eller protokollfel, GraphQL-fel eller avslutat abonnemang. En watchdog ingriper om anslutningen inte kvitteras inom 20 sekunder, om WebSocket-klienten förblir frånkopplad i 30 sekunder eller om någon fas saknas eller inte har uppdaterats inom 30 sekunder. WebSocket-klienten gör normala återförsök var femte sekund. Misslyckad upptäckt eller start använder exponentiell fördröjning med jitter och ett tak på 120 sekunder. Varje ny WebSocket-session nollställer sina fasflaggor, så föregående sessions värden kan inte räknas som live eller användas av mikrovågsvakten. Panelen visar i stället senaste verkliga värden grått i högst fem minuter och därefter `--`. Mikrovågsvakten kräver dessutom aktuell session och ett högst fem sekunder gammalt L1-värde. Automatisk simulering används inte.
+
+Återanslutningsutgåvan byggdes och flashades via COM11 den 2026-10-20. Flashens hash verifierades av esptool. I den levande startloggen anslöt panelen till sparat Wi-Fi och Shelly, synkroniserade svensk tid via NTP, hämtade sex kalenderhändelser och väder för Älvsjö samt genomförde Tibber-handshake och tog emot tre fasvärden. Ingen omstart eller panik observerades under kontrollperioden. Ett verkligt nätavbrott eller en framtvingad serverstängning framkallades inte; dessa återanslutningsvägar är därför kodgranskade och byggverifierade men väntar på nästa naturliga avbrott för full fältverifiering.
 
 Samtliga **26** datorbaserade tester passerade. Sviten omfattar lastvaktsmodellen, mikrons 20 A-skydd samt matlagningstimrarnas gränser, monotona nedräkning, paus, fortsättning, avslut och kvittering.
 
@@ -72,4 +76,4 @@ Backupen hålls utanför Git-förrådet eftersom den kan innehålla kortspecifik
 |---|---:|---:|---|
 | `bootloader.bin` | `0x0000` | 22 288 byte | `138E55F60773EB37A68FC357992D028E5B43CC39A17AD6DD1300E82963BDBD1D` |
 | `partition-table.bin` | `0x8000` | 3 072 byte | `776239783A4A8CE1386FE68450F1D70759738C7269D8A8290837F45BC397D4A7` |
-| `lastvakt_display.bin` | `0x10000` | 1 597 888 byte | `32F046447394F8D801995472B5689DD67E83D31EDBC23EFE5ED7406B23BD0965` |
+| `lastvakt_display.bin` | `0x10000` | 1 597 184 byte | `24B07E3ABCFBCC927C1A71748B0D14FC9CEDE4D1185DECB6EE1A73F7FB3001D7` |

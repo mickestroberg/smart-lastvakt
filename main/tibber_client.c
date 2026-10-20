@@ -18,8 +18,12 @@
 #include "network_setup.h"
 
 #define TIBBER_API_URL "https://api.tibber.com/v1-beta/gql"
-#define USER_AGENT "smart-lastvakt/0.2.0 ESP32-S3"
-#define LIVE_MAX_AGE_US (30LL * 1000LL * 1000LL)
+#define USER_AGENT "smart-lastvakt/0.3.0 ESP32-S3"
+#define TIBBER_ACK_TIMEOUT_US (20LL * 1000LL * 1000LL)
+#define TIBBER_DISCONNECTED_TIMEOUT_US (30LL * 1000LL * 1000LL)
+#define TIBBER_DATA_TIMEOUT_US ((int64_t)TIBBER_LIVE_MAX_AGE_MS * 1000LL)
+#define TIBBER_SEND_TIMEOUT_TICKS pdMS_TO_TICKS(5000)
+#define TIBBER_RETRY_MAX_SECONDS 120U
 
 typedef enum {
     TIBBER_NOT_CONFIGURED,
@@ -38,17 +42,61 @@ typedef struct {
 } http_response_t;
 
 typedef struct {
+    bool connected;
+    bool acknowledged;
+    bool restart_requested;
+    int64_t connected_since_us;
+    int64_t disconnected_since_us;
+    int64_t session_last_phase_us[3];
+} websocket_health_t;
+
+typedef struct {
     esp_websocket_client_handle_t client;
+    portMUX_TYPE lock;
     char home_id[LASTVAKT_HOME_ID_MAX + 1];
     char frame[4096];
     size_t frame_length;
+    bool frame_overflow;
+    bool logged_first_sample;
+    bool warned_partial_sample;
+    bool warned_empty_sample;
+    websocket_health_t health;
 } websocket_context_t;
 
 static const char *TAG = "tibber";
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static tibber_state_t s_state = TIBBER_NOT_CONFIGURED;
 static float s_current[3];
-static int64_t s_last_sample_us;
+static int64_t s_last_phase_us[3];
+static bool s_phase_in_current_session[3];
+
+static void set_state(tibber_state_t state)
+{
+    portENTER_CRITICAL(&s_lock);
+    s_state = state;
+    portEXIT_CRITICAL(&s_lock);
+}
+
+static tibber_state_t get_state(void)
+{
+    portENTER_CRITICAL(&s_lock);
+    const tibber_state_t state = s_state;
+    portEXIT_CRITICAL(&s_lock);
+    return state;
+}
+
+static unsigned next_retry_seconds(unsigned current)
+{
+    if (current >= TIBBER_RETRY_MAX_SECONDS) return TIBBER_RETRY_MAX_SECONDS;
+    const unsigned doubled = current * 2U;
+    return doubled > TIBBER_RETRY_MAX_SECONDS ? TIBBER_RETRY_MAX_SECONDS : doubled;
+}
+
+static void retry_delay(unsigned retry_seconds)
+{
+    const unsigned jitter_ms = esp_random() % 1000U;
+    vTaskDelay(pdMS_TO_TICKS(retry_seconds * 1000U + jitter_ms));
+}
 
 static esp_err_t http_event(esp_http_client_event_t *event)
 {
@@ -137,40 +185,170 @@ static esp_err_t discover(const app_config_t *config, char *websocket_url, size_
     return ESP_OK;
 }
 
-static void process_live_message(const char *message)
+static websocket_health_t websocket_health(websocket_context_t *context)
 {
-    cJSON *root = cJSON_Parse(message);
-    if (root == NULL) return;
-    cJSON *type = cJSON_GetObjectItemCaseSensitive(root, "type");
-    if (!cJSON_IsString(type) || strcmp(type->valuestring, "next") != 0) {
-        cJSON_Delete(root);
-        return;
-    }
-    cJSON *payload = cJSON_GetObjectItemCaseSensitive(root, "payload");
-    cJSON *data = cJSON_GetObjectItemCaseSensitive(payload, "data");
-    cJSON *live = cJSON_GetObjectItemCaseSensitive(data, "liveMeasurement");
-    cJSON *l1 = cJSON_GetObjectItemCaseSensitive(live, "currentL1");
-    cJSON *l2 = cJSON_GetObjectItemCaseSensitive(live, "currentL2");
-    cJSON *l3 = cJSON_GetObjectItemCaseSensitive(live, "currentL3");
-    if (cJSON_IsNumber(l1) && cJSON_IsNumber(l2) && cJSON_IsNumber(l3)) {
-        portENTER_CRITICAL(&s_lock);
-        s_current[0] = (float)l1->valuedouble;
-        s_current[1] = (float)l2->valuedouble;
-        s_current[2] = (float)l3->valuedouble;
-        s_last_sample_us = esp_timer_get_time();
-        s_state = TIBBER_LIVE;
-        portEXIT_CRITICAL(&s_lock);
-    }
-    cJSON_Delete(root);
+    portENTER_CRITICAL(&context->lock);
+    const websocket_health_t health = context->health;
+    portEXIT_CRITICAL(&context->lock);
+    return health;
 }
 
-static void send_subscription(websocket_context_t *context)
+static void websocket_set_connected(websocket_context_t *context, bool connected)
+{
+    const int64_t now_us = esp_timer_get_time();
+    portENTER_CRITICAL(&context->lock);
+    context->health.connected = connected;
+    if (connected) {
+        context->health.acknowledged = false;
+        context->health.connected_since_us = now_us;
+        context->health.disconnected_since_us = 0;
+        memset(context->health.session_last_phase_us, 0, sizeof(context->health.session_last_phase_us));
+    } else if (context->health.disconnected_since_us == 0) {
+        context->health.disconnected_since_us = now_us;
+    }
+    portEXIT_CRITICAL(&context->lock);
+}
+
+static void websocket_set_acknowledged(websocket_context_t *context)
+{
+    portENTER_CRITICAL(&context->lock);
+    context->health.acknowledged = true;
+    portEXIT_CRITICAL(&context->lock);
+}
+
+static void websocket_note_phases(websocket_context_t *context, const bool present[3], int64_t now_us)
+{
+    portENTER_CRITICAL(&context->lock);
+    for (int i = 0; i < 3; ++i) {
+        if (present[i]) context->health.session_last_phase_us[i] = now_us;
+    }
+    portEXIT_CRITICAL(&context->lock);
+}
+
+static void websocket_request_restart(websocket_context_t *context, const char *reason)
+{
+    bool first_request = false;
+    portENTER_CRITICAL(&context->lock);
+    if (!context->health.restart_requested) {
+        context->health.restart_requested = true;
+        first_request = true;
+    }
+    portEXIT_CRITICAL(&context->lock);
+    if (first_request) ESP_LOGW(TAG, "Restarting Tibber stream: %s", reason);
+}
+
+static bool send_text(websocket_context_t *context, const char *message)
+{
+    const int length = (int)strlen(message);
+    return esp_websocket_client_send_text(
+               context->client,
+               message,
+               length,
+               TIBBER_SEND_TIMEOUT_TICKS) == length;
+}
+
+static bool send_subscription(websocket_context_t *context)
 {
     char message[512];
     snprintf(message, sizeof(message),
              "{\"id\":\"lastvakt\",\"type\":\"subscribe\",\"payload\":{\"query\":\"subscription { liveMeasurement(homeId: \\\"%s\\\") { timestamp power currentL1 currentL2 currentL3 } }\"}}",
              context->home_id);
-    esp_websocket_client_send_text(context->client, message, strlen(message), portMAX_DELAY);
+    return send_text(context, message);
+}
+
+static void process_next_message(websocket_context_t *context, cJSON *root)
+{
+    cJSON *payload = cJSON_GetObjectItemCaseSensitive(root, "payload");
+    cJSON *data = cJSON_GetObjectItemCaseSensitive(payload, "data");
+    cJSON *live = cJSON_GetObjectItemCaseSensitive(data, "liveMeasurement");
+    cJSON *phase_items[3] = {
+        cJSON_GetObjectItemCaseSensitive(live, "currentL1"),
+        cJSON_GetObjectItemCaseSensitive(live, "currentL2"),
+        cJSON_GetObjectItemCaseSensitive(live, "currentL3"),
+    };
+
+    const int64_t now_us = esp_timer_get_time();
+    bool present[3] = {0};
+    float values[3] = {0};
+    int accepted = 0;
+    for (int i = 0; i < 3; ++i) {
+        if (cJSON_IsNumber(phase_items[i])) {
+            present[i] = true;
+            values[i] = (float)phase_items[i]->valuedouble;
+            ++accepted;
+        }
+    }
+
+    if (accepted == 0) {
+        if (!context->warned_empty_sample) {
+            ESP_LOGW(TAG, "Live message contained no numeric phase currents");
+            context->warned_empty_sample = true;
+        }
+        return;
+    }
+
+    portENTER_CRITICAL(&s_lock);
+    for (int i = 0; i < 3; ++i) {
+        if (!present[i]) continue;
+        s_current[i] = values[i];
+        s_last_phase_us[i] = now_us;
+        s_phase_in_current_session[i] = true;
+    }
+    s_state = TIBBER_LIVE;
+    portEXIT_CRITICAL(&s_lock);
+    websocket_note_phases(context, present, now_us);
+
+    context->warned_empty_sample = false;
+    if (!context->logged_first_sample) {
+        ESP_LOGI(TAG, "First Tibber live measurement received (%d phase values)", accepted);
+        context->logged_first_sample = true;
+    }
+    if (accepted < 3) {
+        if (!context->warned_partial_sample) {
+            ESP_LOGW(TAG, "Partial Tibber measurement received (%d of 3 phase values)", accepted);
+            context->warned_partial_sample = true;
+        }
+    } else if (context->warned_partial_sample) {
+        ESP_LOGI(TAG, "Complete three-phase Tibber measurements resumed");
+        context->warned_partial_sample = false;
+    }
+}
+
+static void process_text_frame(websocket_context_t *context, const char *message)
+{
+    cJSON *root = cJSON_Parse(message);
+    if (root == NULL) {
+        websocket_request_restart(context, "invalid GraphQL message");
+        return;
+    }
+
+    cJSON *type = cJSON_GetObjectItemCaseSensitive(root, "type");
+    if (!cJSON_IsString(type)) {
+        cJSON_Delete(root);
+        websocket_request_restart(context, "GraphQL message without type");
+        return;
+    }
+
+    if (strcmp(type->valuestring, "connection_ack") == 0) {
+        websocket_set_acknowledged(context);
+        if (!send_subscription(context)) {
+            websocket_request_restart(context, "subscription send failed");
+        } else {
+            ESP_LOGI(TAG, "Tibber stream acknowledged; subscription sent");
+        }
+    } else if (strcmp(type->valuestring, "next") == 0) {
+        process_next_message(context, root);
+    } else if (strcmp(type->valuestring, "ping") == 0) {
+        if (!send_text(context, "{\"type\":\"pong\"}")) {
+            websocket_request_restart(context, "GraphQL pong send failed");
+        }
+    } else if (strcmp(type->valuestring, "error") == 0) {
+        websocket_request_restart(context, "GraphQL subscription error");
+    } else if (strcmp(type->valuestring, "complete") == 0) {
+        websocket_request_restart(context, "GraphQL subscription completed");
+    }
+
+    cJSON_Delete(root);
 }
 
 static void websocket_event(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
@@ -178,28 +356,86 @@ static void websocket_event(void *handler_args, esp_event_base_t base, int32_t e
     (void)base;
     websocket_context_t *context = handler_args;
     esp_websocket_event_data_t *event = event_data;
+
     if (event_id == WEBSOCKET_EVENT_CONNECTED) {
+        websocket_set_connected(context, true);
+        portENTER_CRITICAL(&s_lock);
+        memset(s_phase_in_current_session, 0, sizeof(s_phase_in_current_session));
         s_state = TIBBER_CONNECTING;
+        portEXIT_CRITICAL(&s_lock);
         static const char init[] = "{\"type\":\"connection_init\"}";
-        esp_websocket_client_send_text(context->client, init, strlen(init), portMAX_DELAY);
-    } else if (event_id == WEBSOCKET_EVENT_DATA && event->op_code == 0x1) {
-        if (event->payload_offset == 0) context->frame_length = 0;
+        if (!send_text(context, init)) websocket_request_restart(context, "connection_init send failed");
+    } else if (event_id == WEBSOCKET_EVENT_DATA && event != NULL && event->op_code == 0x1) {
+        if (event->payload_offset == 0) {
+            context->frame_length = 0;
+            context->frame_overflow = false;
+        }
         size_t available = sizeof(context->frame) - context->frame_length - 1;
-        size_t copy = (size_t)event->data_len < available ? (size_t)event->data_len : available;
-        memcpy(context->frame + context->frame_length, event->data_ptr, copy);
+        size_t incoming = event->data_len > 0 ? (size_t)event->data_len : 0;
+        size_t copy = incoming < available ? incoming : available;
+        if (copy > 0) memcpy(context->frame + context->frame_length, event->data_ptr, copy);
         context->frame_length += copy;
         context->frame[context->frame_length] = '\0';
+        if (copy < incoming) context->frame_overflow = true;
+
         if (event->payload_offset + event->data_len >= event->payload_len) {
-            cJSON *root = cJSON_Parse(context->frame);
-            cJSON *type = root == NULL ? NULL : cJSON_GetObjectItemCaseSensitive(root, "type");
-            bool acknowledged = cJSON_IsString(type) && strcmp(type->valuestring, "connection_ack") == 0;
-            cJSON_Delete(root);
-            if (acknowledged) send_subscription(context);
-            else process_live_message(context->frame);
+            if (context->frame_overflow) {
+                websocket_request_restart(context, "GraphQL message exceeded receive buffer");
+            } else {
+                process_text_frame(context, context->frame);
+            }
         }
-    } else if (event_id == WEBSOCKET_EVENT_DISCONNECTED || event_id == WEBSOCKET_EVENT_ERROR) {
-        if (s_state == TIBBER_LIVE || s_state == TIBBER_CONNECTING) s_state = TIBBER_ERROR;
+    } else if (event_id == WEBSOCKET_EVENT_DISCONNECTED) {
+        websocket_set_connected(context, false);
+        set_state(TIBBER_ERROR);
+        ESP_LOGW(TAG, "Tibber WebSocket disconnected; client will reconnect");
+    } else if (event_id == WEBSOCKET_EVENT_ERROR) {
+        websocket_set_connected(context, false);
+        set_state(TIBBER_ERROR);
+        const int error_type = event == NULL ? -1 : (int)event->error_handle.error_type;
+        ESP_LOGW(TAG, "Tibber WebSocket error type %d; client will reconnect", error_type);
+    } else if (event_id == WEBSOCKET_EVENT_CLOSED) {
+        websocket_set_connected(context, false);
+        set_state(TIBBER_ERROR);
+        const int close_code = event == NULL ? 0 : event->close_status_code;
+        ESP_LOGW(TAG, "Tibber WebSocket closed cleanly (code %d); client will reconnect", close_code);
+    } else if (event_id == WEBSOCKET_EVENT_FINISH) {
+        websocket_request_restart(context, "WebSocket task finished");
     }
+}
+
+static bool websocket_watchdog_expired(websocket_context_t *context)
+{
+    const websocket_health_t health = websocket_health(context);
+    if (health.restart_requested) return true;
+    const int64_t now_us = esp_timer_get_time();
+    if (!health.connected) {
+        if (health.disconnected_since_us > 0 &&
+            now_us - health.disconnected_since_us >= TIBBER_DISCONNECTED_TIMEOUT_US) {
+            websocket_request_restart(context, "WebSocket remained disconnected for 30 seconds");
+            return true;
+        }
+        return false;
+    }
+
+    if (!health.acknowledged && now_us - health.connected_since_us >= TIBBER_ACK_TIMEOUT_US) {
+        websocket_request_restart(context, "no GraphQL acknowledgement within 20 seconds");
+        return true;
+    }
+    if (health.acknowledged) {
+        for (int i = 0; i < 3; ++i) {
+            const int64_t phase_us = health.session_last_phase_us[i];
+            if (phase_us == 0 && now_us - health.connected_since_us >= TIBBER_DATA_TIMEOUT_US) {
+                websocket_request_restart(context, "one or more phase currents missing for 30 seconds");
+                return true;
+            }
+            if (phase_us > 0 && now_us - phase_us >= TIBBER_DATA_TIMEOUT_US) {
+                websocket_request_restart(context, "one or more phase currents stale for 30 seconds");
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 static void tibber_task(void *arg)
@@ -207,34 +443,35 @@ static void tibber_task(void *arg)
     (void)arg;
     unsigned retry_seconds = 5;
     for (;;) {
-        s_state = TIBBER_WAITING_NETWORK;
+        set_state(TIBBER_WAITING_NETWORK);
         if (!network_setup_wait_connected(portMAX_DELAY)) continue;
 
         app_config_t config;
         if (app_config_load(&config) != ESP_OK || !app_config_has_tibber(&config)) {
-            s_state = TIBBER_NOT_CONFIGURED;
+            set_state(TIBBER_NOT_CONFIGURED);
             vTaskDelete(NULL);
         }
 
-        s_state = TIBBER_DISCOVERING;
+        set_state(TIBBER_DISCOVERING);
         char url[256] = {0};
         websocket_context_t *context = calloc(1, sizeof(*context));
         if (context == NULL) {
-            s_state = TIBBER_ERROR;
-            vTaskDelay(pdMS_TO_TICKS(30000));
+            set_state(TIBBER_ERROR);
+            retry_delay(retry_seconds);
+            retry_seconds = next_retry_seconds(retry_seconds);
             continue;
         }
+        portMUX_INITIALIZE(&context->lock);
+
         esp_err_t err = discover(&config, url, sizeof(url), context->home_id, sizeof(context->home_id));
-        if (err == ESP_ERR_NOT_FOUND) s_state = TIBBER_NO_PULSE;
-        else if (err != ESP_OK) s_state = TIBBER_ERROR;
+        if (err == ESP_ERR_NOT_FOUND) set_state(TIBBER_NO_PULSE);
+        else if (err != ESP_OK) set_state(TIBBER_ERROR);
         if (err != ESP_OK) {
             free(context);
-            unsigned jitter_ms = esp_random() % 1000;
-            vTaskDelay(pdMS_TO_TICKS(retry_seconds * 1000 + jitter_ms));
-            if (retry_seconds < 120) retry_seconds *= 2;
+            retry_delay(retry_seconds);
+            retry_seconds = next_retry_seconds(retry_seconds);
             continue;
         }
-        retry_seconds = 5;
         if (strcmp(context->home_id, config.tibber_home_id) != 0) app_config_save_home_id(context->home_id);
 
         char authorization[LASTVAKT_TIBBER_TOKEN_MAX + 32];
@@ -247,31 +484,57 @@ static void tibber_task(void *arg)
             .crt_bundle_attach = esp_crt_bundle_attach,
             .reconnect_timeout_ms = 5000,
             .network_timeout_ms = 15000,
+            .enable_close_reconnect = true,
         };
         context->client = esp_websocket_client_init(&ws_config);
         if (context->client == NULL) {
             memset(authorization, 0, sizeof(authorization));
             free(context);
-            s_state = TIBBER_ERROR;
-            vTaskDelay(pdMS_TO_TICKS(30000));
+            set_state(TIBBER_ERROR);
+            retry_delay(retry_seconds);
+            retry_seconds = next_retry_seconds(retry_seconds);
             continue;
         }
+
         esp_websocket_register_events(context->client, WEBSOCKET_EVENT_ANY, websocket_event, context);
-        s_state = TIBBER_CONNECTING;
+        context->health.disconnected_since_us = esp_timer_get_time();
+        set_state(TIBBER_CONNECTING);
         err = esp_websocket_client_start(context->client);
         memset(authorization, 0, sizeof(authorization));
         if (err != ESP_OK) {
             esp_websocket_client_destroy(context->client);
             free(context);
-            s_state = TIBBER_ERROR;
-            vTaskDelay(pdMS_TO_TICKS(30000));
+            set_state(TIBBER_ERROR);
+            retry_delay(retry_seconds);
+            retry_seconds = next_retry_seconds(retry_seconds);
             continue;
         }
 
-        while (network_setup_is_connected()) vTaskDelay(pdMS_TO_TICKS(1000));
-        esp_websocket_client_stop(context->client);
+        bool watchdog_restart = false;
+        while (network_setup_is_connected()) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            if (websocket_watchdog_expired(context)) {
+                watchdog_restart = true;
+                break;
+            }
+        }
+
+        const websocket_health_t final_health = websocket_health(context);
+        const bool received_session_data = final_health.session_last_phase_us[0] > 0 ||
+                                           final_health.session_last_phase_us[1] > 0 ||
+                                           final_health.session_last_phase_us[2] > 0;
         esp_websocket_client_destroy(context->client);
         free(context);
+
+        if (!network_setup_is_connected()) {
+            retry_seconds = 5;
+            continue;
+        }
+
+        set_state(TIBBER_ERROR);
+        const unsigned delay_seconds = received_session_data ? 5U : retry_seconds;
+        if (watchdog_restart) retry_delay(delay_seconds);
+        retry_seconds = received_session_data ? 5U : next_retry_seconds(retry_seconds);
     }
 }
 
@@ -280,23 +543,60 @@ esp_err_t tibber_client_start(void)
     app_config_t config;
     ESP_RETURN_ON_ERROR(app_config_load(&config), TAG, "Could not load Tibber setup");
     if (!app_config_has_tibber(&config)) {
-        s_state = TIBBER_NOT_CONFIGURED;
+        set_state(TIBBER_NOT_CONFIGURED);
         return ESP_OK;
     }
     return xTaskCreate(tibber_task, "tibber", 9216, NULL, 4, NULL) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
+void tibber_client_get_snapshot(tibber_phase_snapshot_t *snapshot)
+{
+    if (snapshot == NULL) return;
+    memset(snapshot, 0, sizeof(*snapshot));
+    int64_t sample_us[3];
+
+    portENTER_CRITICAL(&s_lock);
+    memcpy(snapshot->current_a, s_current, sizeof(s_current));
+    memcpy(sample_us, s_last_phase_us, sizeof(sample_us));
+    memcpy(snapshot->session_live, s_phase_in_current_session, sizeof(s_phase_in_current_session));
+    snapshot->stream_live = s_state == TIBBER_LIVE;
+    portEXIT_CRITICAL(&s_lock);
+
+    const int64_t now_us = esp_timer_get_time();
+    for (int i = 0; i < 3; ++i) {
+        snapshot->age_ms[i] = -1;
+        if (sample_us[i] <= 0 || now_us < sample_us[i]) continue;
+        snapshot->available[i] = true;
+        snapshot->age_ms[i] = (now_us - sample_us[i]) / 1000;
+    }
+}
+
+bool tibber_client_read_phase_with_age(size_t phase_index, float *current_a, int64_t *age_ms)
+{
+    if (phase_index >= 3) return false;
+    tibber_phase_snapshot_t snapshot;
+    tibber_client_get_snapshot(&snapshot);
+    if (current_a != NULL) *current_a = snapshot.available[phase_index] ? snapshot.current_a[phase_index] : 0.0f;
+    if (age_ms != NULL) *age_ms = snapshot.age_ms[phase_index];
+    return snapshot.stream_live && snapshot.session_live[phase_index] && snapshot.available[phase_index];
+}
+
 bool tibber_client_read_with_age(float current_a[3], int64_t *age_ms)
 {
-    bool valid;
-    portENTER_CRITICAL(&s_lock);
-    const int64_t last_sample_us = s_last_sample_us;
-    const int64_t age_us = last_sample_us > 0 ? esp_timer_get_time() - last_sample_us : -1;
-    valid = last_sample_us > 0 && age_us >= 0 && age_us < LIVE_MAX_AGE_US;
-    if (valid) memcpy(current_a, s_current, sizeof(s_current));
-    if (age_ms != NULL) *age_ms = valid ? age_us / 1000 : -1;
-    portEXIT_CRITICAL(&s_lock);
-    return valid;
+    tibber_phase_snapshot_t snapshot;
+    tibber_client_get_snapshot(&snapshot);
+    int64_t oldest_ms = 0;
+    for (int i = 0; i < 3; ++i) {
+        if (!snapshot.stream_live || !snapshot.session_live[i] || !snapshot.available[i] || snapshot.age_ms[i] < 0 ||
+            snapshot.age_ms[i] >= TIBBER_LIVE_MAX_AGE_MS) {
+            if (age_ms != NULL) *age_ms = -1;
+            return false;
+        }
+        if (snapshot.age_ms[i] > oldest_ms) oldest_ms = snapshot.age_ms[i];
+    }
+    if (current_a != NULL) memcpy(current_a, snapshot.current_a, sizeof(snapshot.current_a));
+    if (age_ms != NULL) *age_ms = oldest_ms;
+    return true;
 }
 
 bool tibber_client_read(float current_a[3])
@@ -306,14 +606,29 @@ bool tibber_client_read(float current_a[3])
 
 const char *tibber_client_status_text(void)
 {
-    switch (s_state) {
+    const tibber_state_t state = get_state();
+    if (state == TIBBER_LIVE) {
+        tibber_phase_snapshot_t snapshot;
+        tibber_client_get_snapshot(&snapshot);
+        int fresh_count = 0;
+        for (int i = 0; i < 3; ++i) {
+            if (snapshot.session_live[i] && snapshot.available[i] && snapshot.age_ms[i] >= 0 &&
+                snapshot.age_ms[i] < TIBBER_LIVE_MAX_AGE_MS) {
+                ++fresh_count;
+            }
+        }
+        if (fresh_count == 3) return "LIVE • TIBBER PULSE";
+        if (fresh_count > 0) return "Tibberdata delvis tillgänglig";
+        return "Tibberdata gammal • återansluter";
+    }
+
+    switch (state) {
         case TIBBER_WAITING_NETWORK: return "Tibber väntar på Wi-Fi";
         case TIBBER_DISCOVERING: return "Kontaktar Tibber…";
         case TIBBER_CONNECTING: return "Ansluter till Tibber Pulse…";
-        case TIBBER_LIVE: return "LIVE • TIBBER PULSE";
         case TIBBER_NO_PULSE: return "Tibber Pulse saknas för hemmet";
-        case TIBBER_ERROR: return "Tibber offline • simulerar";
+        case TIBBER_ERROR: return "Tibber offline • försöker igen";
         case TIBBER_NOT_CONFIGURED:
-        default: return "Tibber inte konfigurerad • simulerar";
+        default: return "Tibber är inte konfigurerad";
     }
 }

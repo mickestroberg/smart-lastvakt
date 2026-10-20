@@ -37,9 +37,9 @@ static void microwave_guard_task(void *arg)
         CONFIG_LASTVAKT_MICROWAVE_ACTIVE_POWER_W);
 
     while (true) {
-        float current_a[3] = {0};
+        float current_l1_a = 0.0f;
         int64_t sample_age_ms = -1;
-        const bool tibber_valid = tibber_client_read_with_age(current_a, &sample_age_ms);
+        const bool tibber_valid = tibber_client_read_phase_with_age(0, &current_l1_a, &sample_age_ms);
         const bool tibber_fresh = tibber_valid && sample_age_ms >= 0 &&
                                   sample_age_ms <=
                                       (int64_t)CONFIG_LASTVAKT_MICROWAVE_MAX_TIBBER_AGE_SECONDS * 1000;
@@ -50,7 +50,7 @@ static void microwave_guard_task(void *arg)
         const bool shelly_ready = shelly_state == SHELLY_READY && shelly.available;
 
         status.protection_available = tibber_fresh && shelly_ready;
-        status.current_l1_a = tibber_fresh ? current_a[0] : 0.0f;
+        status.current_l1_a = tibber_fresh ? current_l1_a : 0.0f;
 
         if (status.tripped) {
             /* Only a confirmed external/manual ON clears the latch. This task never requests ON. */
@@ -61,15 +61,15 @@ static void microwave_guard_task(void *arg)
             }
         } else if (status.protection_available && shelly.output_on && !command_pending &&
                    shelly.power_w >= (float)CONFIG_LASTVAKT_MICROWAVE_ACTIVE_POWER_W &&
-                   current_a[0] > status.limit_a) {
+                   current_l1_a > status.limit_a) {
             const esp_err_t err = shelly_client_request_output(false);
             if (err == ESP_OK) {
                 status.tripped = true;
-                status.trip_l1_a = current_a[0];
+                status.trip_l1_a = current_l1_a;
                 ESP_LOGW(
                     TAG,
                     "Automatic microwave cutoff: L1 %.2f A > %.2f A, Shelly %.0f W",
-                    current_a[0],
+                    current_l1_a,
                     status.limit_a,
                     shelly.power_w);
             } else {

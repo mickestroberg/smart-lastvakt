@@ -26,8 +26,9 @@ En frikopplad, datorbaserad referensmodell för framtida tvåstegsstyrning finns
 - Ensidigt mikroskydd: när Shellyn mäter minst 500 W och färsk Tibberdata visar att total L1 är över **20,0 A** begär panelen automatiskt **AV**. Exakt 20,0 A tillåts.
 - Ingen automatisk återinkoppling. Efter ett automatiskt stopp visar reläsidan aktuell L1 och kräver två sekunders långtryck samt separat bekräftelse för att slå på uttaget igen.
 - Skyddad manuell relästyrning även i normal drift: tryck på mikroraden, håll styrknappen i två sekunder och bekräfta därefter ändringen i ett separat dialogfönster.
-- Simulerade, saknade eller äldre Tibbervärden får aldrig styra reläet; reläsidan visar då att autoskyddet väntar på färsk data.
-- Simulerade fasvärden används automatiskt tills Tibber är konfigurerat eller om liveflödet är tillfälligt nere.
+- Saknade eller äldre Tibbervärden får aldrig styra reläet; mikroskyddet kräver ett verkligt L1-värde från den aktuella anslutningen som är högst fem sekunder gammalt.
+- Tibberflödet återansluts efter ren stängning, nätverks- eller protokollfel, uteblivet anslutningskvitto och om någon fas saknas eller blir för gammal. WebSocket-klienten försöker normalt igen var femte sekund; om den ändå förblir frånkopplad i 30 sekunder återskapas hela anslutningen. Misslyckad upptäckt eller start glesas stegvis ut till högst två minuter.
+- Panelen hittar inte på fasvärden vid avbrott. Senaste verkliga värde visas grått i högst fem minuter och ersätts sedan med `--`; bara färska värden kan ge färgvarning eller reläbeslut.
 - Tydliga belastningszoner: grönt till 10 A, orange till 17,5 A och rött över 17,5 A med 25 A huvudsäkring.
 - Sidan **Laga mat** innehåller fyra generiska, parallella timrar: **TIMER 1** till **TIMER 4**. Varje timer öppnas genom att trycka på sitt kort.
 - Tiden ställs i hela timmar och minuter med knapparna `- 1 h`, `+ 1 h`, `- 1 min` och `+ 1 min`. Knapparna kan hållas inne för upprepad ändring. Timern kan startas, pausas, fortsättas, nollställas och kvitteras när den är klar.
@@ -118,8 +119,8 @@ De tre färdiga bilderna ligger även i `firmware/` och har följande offset:
 - `main/weather_source.c` – hämtar aktuellt väder för Älvsjö och behåller senaste värdet vid tillfälliga anslutningsfel.
 - `main/shelly_client.c` – hämtar reläläge och elmätvärden och verkställer bekräftade reläkommandon i bakgrunden på det lokala nätverket.
 - `main/microwave_guard.c` – övervakar färsk L1-data och kan endast begära automatisk frånkoppling av mikron; den begär aldrig tillkoppling.
-- `main/tibber_client.c` – Tibbers GraphQL- och WebSocket-klient.
-- `main/phase_source.c` – väljer livevärden eller simulering.
+- `main/tibber_client.c` – Tibbers GraphQL- och WebSocket-klient med sessionsbunden fasdata, watchdog och kontrollerad återanslutning.
+- `main/phase_source.c` – skiljer färska, partiella, senast kända och otillgängliga verkliga fasvärden åt.
 - `main/app_time.c` – RTC, NTP och svensk tidszon.
 - `main/ui.c` – LVGL-gränssnittet och vyväxlingen.
 - `main/fonts/lv_font_lastvakt_48.c` – stor skärmfont med svenska Å, Ä och Ö för Shelly-lägena.

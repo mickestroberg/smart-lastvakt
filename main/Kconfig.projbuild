@@ -45,8 +45,8 @@ menu "Example Configuration"
             default 5
             range 1 30
             help
-                Simulated, missing or older phase values are never used for relay
-                decisions.
+                Missing, previous-session or older phase values are never used for
+                relay decisions.
 
     endmenu
 
