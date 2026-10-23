@@ -21,6 +21,7 @@ QUARTER = timedelta(minutes=15)
 DEFAULT_TIMEZONE = "Europe/Stockholm"
 DEFAULT_CURRENCY = "SEK"
 DEFAULT_MAX_LEASE_S = 60.0
+DEFAULT_INACTIVE_MONTHS = (6, 7, 8, 9)
 
 
 class PriceTier(str, Enum):
@@ -42,6 +43,7 @@ class PriceTier(str, Enum):
 class PriceDataState(str, Enum):
     READY = "ready"
     BYPASS = "bypass"
+    SEASONAL_PAUSE = "seasonal_pause"
     MISSING = "missing"
     INVALID_TIME = "invalid_time"
     OUTSIDE_DAY = "outside_day"
@@ -59,13 +61,16 @@ class PricePolicyConfig:
     """Ranking quotas for each *actual* local day.
 
     The defaults mean five most expensive quarters off, the following ten at
-    half power, and all remaining quarters unrestricted by price.
+    half power, and all remaining quarters unrestricted by price.  The ranked
+    schedule is still built during the default June--September seasonal pause,
+    but the effective decision remains transparent.
     """
 
     off_quarters: int = 5
     half_quarters: int = 10
     timezone_name: str = DEFAULT_TIMEZONE
     expected_currency: str = DEFAULT_CURRENCY
+    inactive_months: tuple[int, ...] = DEFAULT_INACTIVE_MONTHS
 
     def validate(self) -> None:
         if isinstance(self.off_quarters, bool) or not isinstance(self.off_quarters, int):
@@ -82,6 +87,17 @@ class PricePolicyConfig:
             )
         if not self.expected_currency or self.expected_currency != self.expected_currency.upper():
             raise ValueError("expected_currency must be a non-empty uppercase code")
+        if not isinstance(self.inactive_months, tuple):
+            raise ValueError("inactive_months must be a tuple")
+        if any(
+            isinstance(month, bool) or not isinstance(month, int)
+            for month in self.inactive_months
+        ):
+            raise ValueError("inactive_months must contain integers")
+        if any(month < 1 or month > 12 for month in self.inactive_months):
+            raise ValueError("inactive_months must contain calendar months 1--12")
+        if len(set(self.inactive_months)) != len(self.inactive_months):
+            raise ValueError("inactive_months must not contain duplicates")
 
 
 @dataclass(frozen=True)
@@ -99,6 +115,7 @@ class PriceSchedule:
     timezone_name: str
     currency: str
     slots: tuple[PriceSlot, ...]
+    inactive_months: tuple[int, ...]
 
 
 @dataclass(frozen=True)
@@ -110,6 +127,7 @@ class PriceDecision:
     current_price_total: Optional[float] = None
     currency: Optional[str] = None
     rank: Optional[int] = None
+    scheduled_tier: Optional[PriceTier] = None
 
 
 def expected_quarter_starts(
@@ -205,6 +223,7 @@ def build_price_schedule(
         timezone_name=config.timezone_name,
         currency=config.expected_currency,
         slots=tuple(slots),
+        inactive_months=tuple(sorted(config.inactive_months)),
     )
 
 
@@ -215,7 +234,13 @@ def decide_price_limit(
     enabled: bool = True,
     time_trusted: bool = True,
 ) -> PriceDecision:
-    """Choose the active quarter using an exclusive UTC end boundary."""
+    """Choose the active quarter using an exclusive UTC end boundary.
+
+    During a configured seasonal pause, the returned effective tier is FULL
+    and no stages are blocked.  Price, rank and ``scheduled_tier`` still expose
+    what the already-built schedule would have requested if control were
+    active, so a UI can display and evaluate the plan without actuating it.
+    """
 
     if not enabled:
         return _neutral_decision(PriceDataState.BYPASS)
@@ -230,6 +255,17 @@ def decide_price_limit(
 
     for slot in schedule.slots:
         if slot.starts_at <= now_utc < slot.ends_at:
+            if schedule.local_day.month in schedule.inactive_months:
+                return PriceDecision(
+                    data_state=PriceDataState.SEASONAL_PAUSE,
+                    tier=PriceTier.FULL,
+                    minimum_blocked_stages=0,
+                    valid_until=None,
+                    current_price_total=slot.total,
+                    currency=schedule.currency,
+                    rank=slot.rank,
+                    scheduled_tier=slot.tier,
+                )
             return PriceDecision(
                 data_state=PriceDataState.READY,
                 tier=slot.tier,
@@ -238,6 +274,7 @@ def decide_price_limit(
                 current_price_total=slot.total,
                 currency=schedule.currency,
                 rank=slot.rank,
+                scheduled_tier=slot.tier,
             )
     return _neutral_decision(PriceDataState.MISSING)
 

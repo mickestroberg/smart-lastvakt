@@ -68,15 +68,17 @@ Ett efterföljande treminutersprov med en liter vatten gav högst **1723,4 W**, 
 
 20 A-versionen kompilerades, flashades och startverifierades på den verkliga panelen 2026-10-17. Senare samma dag gav verklig samtidig hushållslast ett lyckat fältprov av både automatisk frånkoppling och manuell återinkoppling. Timerutgåvan byggdes därefter, flashades via COM11 och startverifierades med övriga livekällor anslutna. Den robustare Tibber-klienten byggdes och flashades 2026-10-20; startloggen verifierade Wi-Fi, Shelly, NTP, kalender, väder, godkänd Tibber-handshake och en komplett ny uppsättning L1/L2/L3 utan omstart eller panik. Samtliga 26 datorbaserade tester passerade. Se [README.md](README.md) för användning och [BUILD-REPORT.md](BUILD-REPORT.md) för verifierade detaljer.
 
+**Förberett i källkoden men ännu inte flashat:** en skrivskyddad prissida som öppnas via **Tibber Live**-pillret. Den visar prislagrets hypotetiska högsta tillåtna effekt nu och de kommande 24 timmarnas `0 %`- och `50 %`-kvartar med pris och dygnsrang. Prislagret kan automatiskt pausas juni–september; valet är på som standard, sparas via installationssidan och lämnar råplanen synlig under pausen. Prisvyn och dess källa har ingen fysisk utgång.
+
 ## Hårdvarufri utveckling
 
 En frikopplad referensmodell för framtida tvåstegsstyrning finns i `tools/load_guard_policy.py`. Den har inga nätverks- eller reläutgångar och ingår inte i ESP32-firmware. Modellen gör det möjligt att testa fasgränser, stegordning, fördröjningar, återinkopplingsutrymme, datans färskhet och tidsbegränsade externa blockeringar innan den verkliga installationen är känd.
 
-`tools/quarter_price_policy.py` validerar och rangordnar Tibbers kvartpriser. Standardförslaget blockerar båda stegen under dygnets fem dyraste kvartar och minst ett steg under plats 6–15. Modellen räknar verkliga lokala dygn med 92, 96 eller 100 kvartar, är transparent vid felaktig plan, BYPASS eller opålitlig tid och utfärdar aldrig ett startkommando. En första separat firmwarekälla i `main/tibber_price_source.c` kan, när en byggflagga uttryckligen aktiveras, hämta dagens kompletta Tibber-priser och publicera ett helt icke-aktuerande shadow-beslut i RAM. Den är avstängd som standard och saknar koppling till UI, Shelly, COALA och reläer. Se [PRICE-CONTROL-POLICY.md](PRICE-CONTROL-POLICY.md).
+`tools/quarter_price_policy.py` validerar och rangordnar Tibbers kvartpriser. Standardförslaget blockerar båda stegen under dygnets fem dyraste kvartar och minst ett steg under plats 6–15. Modellen räknar verkliga lokala dygn med 92, 96 eller 100 kvartar, stöder en standardaktiverad juni–september-paus, är transparent vid felaktig plan, BYPASS eller opålitlig tid och utfärdar aldrig ett startkommando. En separat firmwarekälla i `main/tibber_price_source.c` kan, när byggflaggan uttryckligen aktiveras, hämta dagens och den publicerade morgondagens kompletta Tibber-priser till en atomiskt utbytt RAM/PSRAM-bok. Den är avstängd som standard och saknar koppling till Shelly, COALA och reläer. Den skrivskyddade UI-sidan läser bara en kopia av boken. Se [PRICE-CONTROL-POLICY.md](PRICE-CONTROL-POLICY.md).
 
 `tools/stage_output_sequencer.py` modellerar den framtida utgångsdrivaren utan rå reläpolaritet eller fysisk adapter. Den går alltid via rätt Re1/Re2-ordning, skickar högst ett idempotent kommando åt gången, väntar på återläsning och minsta intervall och tillåter ingen automatisk återinkoppling från okänt läge eller felläge.
 
-Automatiserade datorbaserade tester finns i `tests/test_load_guard_policy.py`, `tests/test_quarter_price_policy.py` och `tests/test_stage_output_sequencer.py`. Mikrons aktiva envägsvakt har dessutom en ren beslutsmodell i `tools/microwave_guard_policy.py` med tester i `tests/test_microwave_guard_policy.py`. Matlagningstimrarnas rena tillståndsmodell finns i `tools/cooking_timer_policy.py` och provas av `tests/test_cooking_timer_policy.py`. Den samlade sviten innehåller nu 61 tester. Se [LOAD-GUARD-POLICY.md](LOAD-GUARD-POLICY.md) och [PRICE-CONTROL-POLICY.md](PRICE-CONTROL-POLICY.md) för beteende, avgränsning och körning. Den senast flashade firmwareutgåvan verifierades med den tidigare 26-testsviten. De nya pris- och sekvenseringsreferenserna är datorverifierade; firmwarekällans berörda C-enheter kompilerar med shadow-flaggan på, men full länkning stoppades av Windows App Control och ingen ny firmware har flashats.
+Automatiserade datorbaserade tester finns i `tests/test_load_guard_policy.py`, `tests/test_quarter_price_policy.py` och `tests/test_stage_output_sequencer.py`. Mikrons aktiva envägsvakt har dessutom en ren beslutsmodell i `tools/microwave_guard_policy.py` med tester i `tests/test_microwave_guard_policy.py`. Matlagningstimrarnas rena tillståndsmodell finns i `tools/cooking_timer_policy.py` och provas av `tests/test_cooking_timer_policy.py`. Den samlade sviten innehåller nu **65 tester**. Se [LOAD-GUARD-POLICY.md](LOAD-GUARD-POLICY.md) och [PRICE-CONTROL-POLICY.md](PRICE-CONTROL-POLICY.md) för beteende, avgränsning och körning. Den senast flashade firmwareutgåvan verifierades med den tidigare 26-testsviten. Prisreferensen, säsongspausen och sekvenseringsreferensen är datorverifierade. Prisvägens berörda C-enheter kompilerar separat med shadow-flaggan på och UI-koden även med flaggan av, men full arkivering/länkning stoppas av Windows App Control med felkod 4551. Ingen firmware med prisvyn har flashats eller fältprovats.
 
 ## Sekretess och konfiguration
 
@@ -87,7 +89,7 @@ Följande får aldrig checkas in, skrivas i dokumentation eller återges i loggu
 - Googles hemliga iCal-adress;
 - andra autentiseringsuppgifter eller exporter av enhetens NVS.
 
-Uppgifterna lagras i ESP32-enhetens NVS och matas in via den lokala installationssidan. Tibber-token hämtades tidigare från användarens lokala fil och lades direkt i enheten; tokenvärdet hör inte hemma i projektet.
+Uppgifterna lagras i ESP32-enhetens NVS och matas in via den lokala installationssidan. Där sparas även det icke-hemliga valet om automatisk prispaus juni–september, påslaget som standard. Tibber-token hämtades tidigare från användarens lokala fil och lades direkt i enheten; tokenvärdet hör inte hemma i projektet.
 
 ## Beslutade systemprinciper
 
@@ -97,6 +99,8 @@ Uppgifterna lagras i ESP32-enhetens NVS och matas in via den lokala installation
 - All relästyrning ska kontrollera mätvärdets ålder och att alla nödvändiga fasvärden är giltiga.
 - Fasgränser och säkerhetsbegränsning ska ha företräde framför prisoptimering.
 - En smart styrning får endast begränsa tillåten last; den får aldrig tvinga värme eller annan last att starta.
+- Prislagret ska som standard vara transparent juni–september. Råplanen får fortfarande visas för utvärdering, och familjen kan stänga av säsongspausen i installationssidan.
+- Prissidans `0 %`, `50 %` och obegränsade läge beskriver endast prislagrets högsta tillåtna effekt. De säger inte att termostaten eller andra skydd faktiskt kommer att starta patronen.
 
 ### Mikrovågsugn
 
@@ -161,7 +165,7 @@ Nedräkningen beräknas mot ESP32:ans monotona tid och påverkas därför inte a
 - En senare notistjänst kan skicka pushmeddelande eller SMS när en maskin bedöms vara klar. Tjänst och leveranssätt är ännu inte valda. Funktionen ska vara övervakande och får inte ge automatisk fjärrstart.
 - Enkel gemensam inköpslista, exempelvis ”mjölken är slut”, med inmatning från mobil eller panel och valbar notis till de vuxna.
 - Kalenderförbättringar efter familjens praktiska användning.
-- Prisvisning och prisstyrning via Tibber, underordnad fas- och säkerhetsgränser. Den rena kvartspolicyn och en första dagens HTTP-källa i avstängt shadow mode är klara; morgondagsplan, beständig cache, UI, fältprov och fysisk utgång återstår.
+- Fysisk prisstyrning via Tibber, underordnad fas- och säkerhetsgränser. Den rena kvartspolicyn, dagens/morgondagens RAM-källa och den skrivskyddade shadow-vyn är klara i källkoden; fullbyggnad, flashning, flerdygnsobservation och all fysisk utgång återstår.
 - Möjlig förvarning eller startspärr för mikron innan 20 A-vakten behöver bryta en pågående körning.
 - Smart, stegvis begränsning av elpatronen i samarbete med COALA.
 - Spis/torrkokningsskydd har diskuterats som ett separat framtida säkerhetsproblem men ingår inte i nuvarande konstruktion.
@@ -170,14 +174,14 @@ Nedräkningen beräknas mot ESP32:ans monotona tid och påverkas därför inte a
 
 1. Lägg till en liten lokal händelselogg med tidsstämplar för mikrovakten, L1-värde, Tibbervärdets ålder, Shellyeffekt och reläkommando så att nästa verkliga stopp kan analyseras i efterhand.
 2. Gör en slutlig säkerhetsbedömning av Shelly-pluggens lämplighet för mikron, inklusive korta startströmmar och IKEA-manualens begränsning av extern styrning.
-3. Fullbygg och flasha den standardmässigt avstängda prisfunktionen i rent shadow mode; verifiera samtidigt NTP, dagens kompletta prisdygn, Pulse-stabilitet och internminnets marginal utan någon fysisk utgång.
+3. Fullbygg och flasha den standardmässigt avstängda prisfunktionen i rent shadow mode; verifiera samtidigt NTP, dagens och morgondagens kompletta prisdygn, partiell horisont före publicering, dygnsskifte, säsongspaus, Pulse-stabilitet och internminnets marginal utan någon fysisk utgång.
 4. Låt elektrikern fastställa vad de två Benedict-kontaktorerna matar och vilken som styrs av `Re1` respektive `Re2`.
 5. Kontrollera den bekräftade PF-patronens interna kontaktor och om effektvaktsingången `F–K` är byglad, ansluten eller ledig.
 6. Verifiera tvåtimmarsspärrens praktiska beteende utan att förväxla ett halvlastprov direkt efter spänningssättning med patronens fulla effekt.
 7. Mäta strömändringen per fas för varje verkligt effektsteg.
 8. Rita och godkänn slutligt kopplingsschema, inklusive reservläge, SMART/BYPASS och eventuell återkoppling från hjälpkontakterna.
 9. Bestäm slutliga styrgränser, hysteres, minsta till-/fråntider, maximal sammanhängande prisblockering och beteende vid omstart eller saknad data.
-10. Utöka shadow-källan med morgondagsplan, validerad cache och UI och observera besluten innan de får påverka värmen.
+10. Observera shadow-besluten under flera dygn och avgör därefter om en beständig pris-cache behövs; nuvarande bok ligger avsiktligt endast i RAM.
 11. Ersätt referensmodellens exempelparametrar med mätta och godkända värden och implementera den fysiska reläadaptern först därefter.
 
 ## Öppna konstruktionsfrågor

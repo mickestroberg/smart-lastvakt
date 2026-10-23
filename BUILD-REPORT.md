@@ -1,6 +1,6 @@
 # Byggrapport – Smart lastvakt
 
-Datum: 2026-10-20
+Datum: 2026-10-23
 
 ## Resultat
 
@@ -62,11 +62,13 @@ Senare 2026-10-17 fältprovades funktionen under verklig hushållslast. Elpatron
 
 ## Offlineförberedelse för kvartspris – 2026-10-23
 
-Ingen panel var ansluten och ingen flashning gjordes. Den frikopplade kvartspolicyn och den hårdvaruneutrala tvåstegssekvenseraren verifierades tillsammans med övriga skrivbordsmodeller: **61 av 61 tester passerade**. Testerna omfattar bland annat 92/96/100 verkliga kvartar vid svensk sommartid, rangordning 5 `Av` + 10 `Halv`, felaktiga eller ofullständiga prisdygn, korta blockeringsleaser, prioritet för faslast samt kontaktorordning och förlorad återläsning.
+Ingen panel var ansluten och ingen flashning gjordes. Den frikopplade kvartspolicyn och den hårdvaruneutrala tvåstegssekvenseraren verifierades tillsammans med övriga skrivbordsmodeller: **65 av 65 tester passerade**. Testerna omfattar bland annat 92/96/100 verkliga kvartar vid svenska tidsomställningar, rangordning 5 `Av` + 10 `Halv`, standardpaus juni–september, valfri avstängning av pausen, fortsatt synlig råplan, felaktiga eller ofullständiga prisdygn, korta blockeringsleaser, prioritet för faslast samt kontaktorordning och förlorad återläsning.
 
-En första Tibber-priskälla lades till bakom byggflaggan `CONFIG_LASTVAKT_TIBBER_PRICE_SHADOW`, som är avstängd som standard. Den hämtar endast dagens kvartpriser, kräver ett uttryckligt sparat Tibber-hem och NTP-synkroniserad tid, validerar GraphQL-svar, valuta och ett komplett sammanhängande dygn och publicerar bara en läsbar ögonblicksbild i RAM/PSRAM. Fel återprovas med jitter och exponentiell väntan upp till en timme. Modulen har inga anrop eller beroenden till Shelly, COALA, kontaktorer eller reläutgångar. Startfel loggas utan att stoppa panelens övriga funktioner.
+Tibber-priskällan ligger bakom byggflaggan `CONFIG_LASTVAKT_TIBBER_PRICE_SHADOW`, som fortfarande är avstängd som standard. Den frågar efter både dagens och morgondagens kvartpriser, kräver ett uttryckligt sparat Tibber-hem och NTP-synkroniserad tid, validerar GraphQL-svar, valuta och varje komplett sammanhängande lokaldag och publicerar en atomisk läsbar prisbok endast i RAM/PSRAM. En giltig dag rangordnas separat. Om morgondagen ännu inte är publicerad är dagens kortare horisont ett normalt tillstånd; källan återprovar senare med jitter och exponentiell väntan och behöver inte kasta fortfarande giltig data vid ett tillfälligt fel. Ingen plan sparas till flash eller NVS.
 
-Med shadow-flaggan aktiverad kompilerade `main/tibber_price_source.c`, `main/app_time.c` och `main/main.c` utan varningar eller fel. Full arkivering och länkning kunde inte slutföras på arbetsdatorn eftersom Windows App Control blockerade ett barnprogram till `xtensa-esp32s3-elf-ar.exe` med felkod 4551. Detta var inte ett kompilatorfel, men en full ESP-IDF-byggning ska därför göras i den vanliga tillåtna byggmiljön innan shadow-läget flashas och fältprovas.
+En skrivskyddad prissida lades till bakom **Tibber Live**-pillret. Den visar vilket högsta effektläge prislagret hypotetiskt skulle tillåta just nu och paginerar de kommande 24 timmarnas `0 %`- och `50 %`-kvartar med totalpris och rang. Fram till att morgondagens prisdygn publicerats säger sidan neutralt att den visar till midnatt. Den lokala installationssidan har dessutom ett standardaktiverat val för automatisk prispaus juni–september. Under pausen är den effektiva simuleringen obegränsad men råplanen fortsätter att visas. Varken sidan, säsongspausen eller källan har någon väg till Shelly, COALA, kontaktorer eller reläutgångar.
+
+Med shadow-flaggan på kompilerade `main/app_config.c`, `main/network_setup.c`, `main/ui.c`, `main/tibber_price_source.c` och `main/main.c` separat utan fel eller varningar. Den villkorsstyrda prisvyn i `main/ui.c` kompilerade även med flaggan av. Full arkivering och länkning kunde fortfarande inte slutföras på arbetsdatorn eftersom Windows App Control blockerade ett barnprogram till `xtensa-esp32s3-elf-ar.exe` med felkod 4551. Detta var inte ett C-kompilatorfel. Ingen firmware med prisboken eller prissidan har flashats eller liveprovats; en full ESP-IDF-byggning ska göras i den vanliga tillåtna byggmiljön innan rent shadow-läge provas på panelen.
 
 ## Fabriksbackup
 

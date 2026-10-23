@@ -36,7 +36,7 @@ static bool s_ap_started;
 static char s_address[64] = "Startar nätverk…";
 static char s_url[40] = "http://192.168.4.1";
 
-static const char SETUP_HTML[] =
+static const char SETUP_HTML_BEFORE_SUMMER_PAUSE[] =
     "<!doctype html><html lang='sv'><head><meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width,initial-scale=1'>"
     "<title>Smart lastvakt</title><style>"
@@ -44,6 +44,7 @@ static const char SETUP_HTML[] =
     "main{max-width:560px;margin:auto;background:#0d1b2b;padding:28px;border-radius:20px}"
     "h1{color:#34d6e7}label{display:block;margin:18px 0 6px}"
     "input{box-sizing:border-box;width:100%;padding:12px;border-radius:10px;border:1px solid #38506a;background:#13263a;color:white}"
+    ".check{display:flex;align-items:center;gap:10px}.check input{width:auto;margin:0}.check span{flex:1}"
     "button{margin-top:24px;padding:13px 22px;border:0;border-radius:22px;background:#34d6e7;color:#07111f;font-weight:700}"
     "small{color:#9eb0c0;display:block;margin-top:16px}</style></head><body><main>"
     "<h1>Smart lastvakt</h1><p>Ange hemnätverket och anslutningarna. Uppgifterna sparas bara lokalt i displayen.</p>"
@@ -53,6 +54,11 @@ static const char SETUP_HTML[] =
     "<label for='token'>Tibber Personal Access Token</label><input id='token' name='token' type='password' maxlength='255' placeholder='Lämna tomt för att behålla sparad token'>"
     "<label for='calendar'>Google Kalender – hemlig adress i iCal-format</label><input id='calendar' name='calendar' type='password' maxlength='255' placeholder='Lämna tomt för att behålla sparad adress'>"
     "<label for='shelly'>Shelly – IP-adress eller värdnamn</label><input id='shelly' name='shelly' maxlength='95' placeholder='Exempel: 192.168.68.121'>"
+    "<label class='check'><input id='summer_pause' name='summer_pause' type='checkbox' value='1'";
+
+static const char SETUP_HTML_AFTER_SUMMER_PAUSE[] =
+    "><span>Pausa prisbegränsningen automatiskt juni–september</span></label>"
+    "<small>Prisplanen visas fortfarande i skuggläge under sommarpausen, men skulle inte begränsa elpatronen.</small>"
     "<button type='submit'>Spara och starta om</button></form>"
     "<small>Tibber-token skapas på developer.tibber.com. Kalenderadressen finns under Google Kalender → Inställningar → Integrera kalender → Hemlig adress i iCal-format.</small>"
     "</main></body></html>";
@@ -112,7 +118,23 @@ static esp_err_t page_get(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    return httpd_resp_send(req, SETUP_HTML, HTTPD_RESP_USE_STRLEN);
+    app_config_t config = {0};
+    const bool summer_pause = app_config_load(&config) == ESP_OK ? config.price_summer_pause : true;
+    ESP_RETURN_ON_ERROR(
+        httpd_resp_send_chunk(req, SETUP_HTML_BEFORE_SUMMER_PAUSE, HTTPD_RESP_USE_STRLEN),
+        TAG,
+        "Could not send setup page");
+    if (summer_pause) {
+        ESP_RETURN_ON_ERROR(
+            httpd_resp_sendstr_chunk(req, " checked"),
+            TAG,
+            "Could not send setup preference");
+    }
+    ESP_RETURN_ON_ERROR(
+        httpd_resp_send_chunk(req, SETUP_HTML_AFTER_SUMMER_PAUSE, HTTPD_RESP_USE_STRLEN),
+        TAG,
+        "Could not send setup page");
+    return httpd_resp_send_chunk(req, NULL, 0);
 }
 
 static int hex_value(char value)
@@ -195,11 +217,15 @@ static esp_err_t save_post(httpd_req_t *req)
     char token[LASTVAKT_TIBBER_TOKEN_MAX + 1] = {0};
     char calendar[LASTVAKT_CALENDAR_URL_MAX + 1] = {0};
     char shelly[LASTVAKT_SHELLY_HOST_MAX + 1] = {0};
+    char summer_pause[8] = {0};
     form_value(body, "ssid", ssid, sizeof(ssid));
     form_value(body, "password", password, sizeof(password));
     form_value(body, "token", token, sizeof(token));
     form_value(body, "calendar", calendar, sizeof(calendar));
     form_value(body, "shelly", shelly, sizeof(shelly));
+    const bool summer_pause_enabled =
+        form_value(body, "summer_pause", summer_pause, sizeof(summer_pause)) &&
+        strcmp(summer_pause, "1") == 0;
     free(body);
 
     if (err != ESP_OK || ssid[0] == '\0') {
@@ -210,6 +236,7 @@ static esp_err_t save_post(httpd_req_t *req)
     if (token[0] != '\0') snprintf(config.tibber_token, sizeof(config.tibber_token), "%s", token);
     if (calendar[0] != '\0') snprintf(config.calendar_ical_url, sizeof(config.calendar_ical_url), "%s", calendar);
     if (shelly[0] != '\0') snprintf(config.shelly_host, sizeof(config.shelly_host), "%s", shelly);
+    config.price_summer_pause = summer_pause_enabled;
     config.tibber_home_id[0] = '\0';
 
     err = app_config_save(&config);

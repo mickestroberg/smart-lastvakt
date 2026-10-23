@@ -38,6 +38,7 @@ esp_err_t app_config_load(app_config_t *config)
         return ESP_ERR_INVALID_ARG;
     }
     memset(config, 0, sizeof(*config));
+    config->price_summer_pause = true;
 
     nvs_handle_t handle;
     esp_err_t err = nvs_open(CONFIG_NAMESPACE, NVS_READONLY, &handle);
@@ -54,6 +55,12 @@ esp_err_t app_config_load(app_config_t *config)
     if (err == ESP_OK) err = get_string(handle, "home_id", config->tibber_home_id, sizeof(config->tibber_home_id));
     if (err == ESP_OK) err = get_string(handle, "calendar", config->calendar_ical_url, sizeof(config->calendar_ical_url));
     if (err == ESP_OK) err = get_string(handle, "shelly", config->shelly_host, sizeof(config->shelly_host));
+    if (err == ESP_OK) {
+        uint8_t summer_pause = 1;
+        esp_err_t pause_err = nvs_get_u8(handle, "price_summer", &summer_pause);
+        if (pause_err == ESP_OK) config->price_summer_pause = summer_pause != 0;
+        else if (pause_err != ESP_ERR_NVS_NOT_FOUND) err = pause_err;
+    }
     nvs_close(handle);
     return err;
 }
@@ -72,6 +79,7 @@ esp_err_t app_config_save(const app_config_t *config)
     if (err == ESP_OK) err = nvs_set_str(handle, "home_id", config->tibber_home_id);
     if (err == ESP_OK) err = nvs_set_str(handle, "calendar", config->calendar_ical_url);
     if (err == ESP_OK) err = nvs_set_str(handle, "shelly", config->shelly_host);
+    if (err == ESP_OK) err = nvs_set_u8(handle, "price_summer", config->price_summer_pause ? 1 : 0);
     if (err == ESP_OK) err = nvs_commit(handle);
     nvs_close(handle);
     return err;

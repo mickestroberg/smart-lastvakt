@@ -38,6 +38,96 @@ class QuarterPricePolicyTests(unittest.TestCase):
         highest = sorted(schedule.slots, key=lambda slot: slot.total, reverse=True)[:5]
         self.assertTrue(all(slot.tier is PriceTier.OFF for slot in highest))
 
+    def test_default_summer_pause_is_transparent_at_month_boundaries(self) -> None:
+        cases = (
+            (date(2026, 5, 31), PriceDataState.READY),
+            (date(2026, 6, 1), PriceDataState.SEASONAL_PAUSE),
+            (date(2026, 9, 30), PriceDataState.SEASONAL_PAUSE),
+            (date(2026, 10, 1), PriceDataState.READY),
+        )
+
+        for day, expected_state in cases:
+            with self.subTest(day=day):
+                schedule = build_price_schedule(day, prices_for_day(day))
+                off_slot = next(
+                    slot for slot in schedule.slots if slot.tier is PriceTier.OFF
+                )
+                decision = decide_price_limit(schedule, off_slot.starts_at)
+
+                self.assertEqual(expected_state, decision.data_state)
+                if expected_state is PriceDataState.SEASONAL_PAUSE:
+                    self.assertEqual(PriceTier.FULL, decision.tier)
+                    self.assertEqual(0, decision.minimum_blocked_stages)
+                else:
+                    self.assertEqual(PriceTier.OFF, decision.tier)
+                    self.assertEqual(2, decision.minimum_blocked_stages)
+
+    def test_all_default_inactive_months_are_paused(self) -> None:
+        for month in (6, 7, 8, 9):
+            with self.subTest(month=month):
+                day = date(2026, month, 15)
+                schedule = build_price_schedule(day, prices_for_day(day))
+                decision = decide_price_limit(schedule, schedule.slots[-1].starts_at)
+
+                self.assertEqual(PriceDataState.SEASONAL_PAUSE, decision.data_state)
+                self.assertEqual(0, decision.minimum_blocked_stages)
+
+    def test_summer_schedule_remains_ranked_and_visible_while_control_is_paused(self) -> None:
+        day = date(2026, 7, 15)
+        schedule = build_price_schedule(day, prices_for_day(day))
+        off_slot = next(slot for slot in schedule.slots if slot.tier is PriceTier.OFF)
+        decision = decide_price_limit(schedule, off_slot.starts_at)
+
+        self.assertEqual(5, sum(slot.tier is PriceTier.OFF for slot in schedule.slots))
+        self.assertEqual(10, sum(slot.tier is PriceTier.HALF for slot in schedule.slots))
+        self.assertEqual(PriceDataState.SEASONAL_PAUSE, decision.data_state)
+        self.assertEqual(PriceTier.FULL, decision.tier)
+        self.assertEqual(PriceTier.OFF, decision.scheduled_tier)
+        self.assertEqual(off_slot.total, decision.current_price_total)
+        self.assertEqual(off_slot.rank, decision.rank)
+        self.assertEqual(schedule.currency, decision.currency)
+        self.assertIsNone(decision.valid_until)
+        self.assertEqual(
+            0,
+            to_external_block(decision, off_slot.starts_at, 100.0).active_count(100.0),
+        )
+
+    def test_seasonal_pause_months_are_configurable_or_can_be_disabled(self) -> None:
+        june = date(2026, 6, 15)
+        july = date(2026, 7, 15)
+        september = date(2026, 9, 15)
+        custom = PricePolicyConfig(inactive_months=(7, 8))
+
+        june_schedule = build_price_schedule(june, prices_for_day(june), custom)
+        july_schedule = build_price_schedule(july, prices_for_day(july), custom)
+        september_schedule = build_price_schedule(
+            september, prices_for_day(september), custom
+        )
+        always_active = build_price_schedule(
+            july,
+            prices_for_day(july),
+            PricePolicyConfig(inactive_months=()),
+        )
+
+        self.assertEqual(
+            PriceDataState.READY,
+            decide_price_limit(june_schedule, june_schedule.slots[-1].starts_at).data_state,
+        )
+        self.assertEqual(
+            PriceDataState.SEASONAL_PAUSE,
+            decide_price_limit(july_schedule, july_schedule.slots[-1].starts_at).data_state,
+        )
+        self.assertEqual(
+            PriceDataState.READY,
+            decide_price_limit(
+                september_schedule, september_schedule.slots[-1].starts_at
+            ).data_state,
+        )
+        self.assertEqual(
+            PriceDataState.READY,
+            decide_price_limit(always_active, always_active.slots[-1].starts_at).data_state,
+        )
+
     def test_input_order_does_not_affect_schedule(self) -> None:
         day = date(2026, 10, 23)
         entries = prices_for_day(day)
@@ -280,6 +370,11 @@ class QuarterPricePolicyTests(unittest.TestCase):
             PricePolicyConfig(off_quarters=100),
             PricePolicyConfig(timezone_name="Not/AZone"),
             PricePolicyConfig(expected_currency="sek"),
+            PricePolicyConfig(inactive_months=[6, 7, 8, 9]),
+            PricePolicyConfig(inactive_months=(0,)),
+            PricePolicyConfig(inactive_months=(13,)),
+            PricePolicyConfig(inactive_months=(True,)),
+            PricePolicyConfig(inactive_months=(6, 6)),
         ):
             with self.subTest(config=config):
                 with self.assertRaises(ValueError):

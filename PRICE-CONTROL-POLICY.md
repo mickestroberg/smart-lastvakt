@@ -2,7 +2,7 @@
 
 Detta dokument beskriver den planerade prisbegränsningen av Relek PF 9 kW och dess samverkan med fasvakten och COALA. Den körbara referensen finns i `tools/quarter_price_policy.py` och testas av `tests/test_quarter_price_policy.py`.
 
-Beslutsreferensen är **inte** inkopplad till någon fysisk utgång. Firmware innehåller nu dessutom en separat, standardmässigt avstängd Tibber-källa som kan hämta och rangordna dagens priser i skrivskyddat shadow mode. Den har ingen beroendekedja till Shelly, COALA eller relä-API. Prisfunktionen ska förbli bortkopplad från verklig styrning tills elektrikern har identifierat de två effektstegen, godkänt kopplingen och ett säkert reservläge har verifierats.
+Beslutsreferensen är **inte** inkopplad till någon fysisk utgång. Firmware innehåller nu dessutom en separat, standardmässigt avstängd Tibber-källa som kan hämta och rangordna dagens och morgondagens priser i skrivskyddat shadow mode. En egen panelsida visar besluten som simulering, men källan har ingen beroendekedja till Shelly, COALA eller relä-API. Prisfunktionen ska förbli bortkopplad från verklig styrning tills elektrikern har identifierat de två effektstegen, godkänt kopplingen och ett säkert reservläge har verifierats.
 
 ## Grundregel
 
@@ -21,6 +21,12 @@ Standardförslaget för ett dygn är:
 - övriga kvartar: `Full`.
 
 Detta är en första optimeringsstrategi, inte en fast komfortinställning. Innan `Av` används fysiskt ska vi besluta om maximal sammanhängande avstängning och helst ha pann-/tanktemperatur eller annan verifierad komfortgräns. En försiktig första driftsättning kan begränsa prislagret till högst `Halv` medan endast tänkta `Av`-beslut loggas.
+
+## Säsongspaus
+
+Prisbegränsningen kan pausas automatiskt under **juni, juli, augusti och september**. Inställningen är påslagen som standard, kan ändras på den lokala installationssidan och sparas i enhetens NVS. Under dessa månader blir prislagrets effektiva beslut `Full`, alltså ingen prisbegränsning. Termostat, COALA, fasvakt och övriga skydd fortsätter naturligtvis att bestämma som vanligt.
+
+Rangordningen körs fortfarande och den råa planen ligger kvar på den skrivskyddade prissidan. Det gör att familjen kan jämföra vilka `0 %`- och `50 %`-kvartar som skulle ha valts utan att säsongspausen påverkar någon last. Referensmodellen tillåter även andra eller inga pausmånader, men panelens nuvarande familjeinställning är det enkla valet juni–september på eller av.
 
 ## Säkerhets- och prioritetsordning
 
@@ -65,17 +71,20 @@ Den befintliga Tibber-token kan användas även för priser. Tibbers GraphQL-sch
 
 `total` används för hushållets rangordning. Det omfattar Tibbers redovisade energipris och skatt men ska inte antas innehålla alla nätägarens effekt- eller överföringsavgifter. Valutan kontrolleras och sparas uttryckligen. Nord Pool behöver därför inget separat konto eller token för den första versionen.
 
-Prisfrågan ska ligga i en separat HTTP-modul och inte byggas in i den nu stabiliserade Pulse-WebSocket-klienten. `today` hämtas efter tids- och nätstart. `tomorrow` efterfrågas med randomiserad fördröjning under eftermiddagen och återprovas med jitter och exponentiell fördröjning tills en komplett plan finns; ett tomt `tomorrow` räknas alltså inte som färdigt dygnsarbete och ska inte visas som ett familjefel. En senare hämtning får atomiskt ersätta en tidigare preliminär plan först när hela den nya dagen har validerats. Exakt publiceringsklockslag ska inte hårdkodas.
+Prisfrågan ligger i en separat HTTP-modul och är inte inbyggd i den stabiliserade Pulse-WebSocket-klienten. `today` hämtas efter tids- och nätstart. `tomorrow` efterfrågas med randomiserad fördröjning under eftermiddagen och återprovas med jitter och exponentiell fördröjning tills en komplett plan finns; ett tomt `tomorrow` räknas alltså inte som färdigt dygnsarbete och visas inte som ett familjefel. En senare hämtning ersätter den aktiva prisboken atomiskt först när dagens nya data har validerats; en redan giltig morgondag kan behållas om en mellanliggande hämtning ännu inte innehåller den. Exakt publiceringsklockslag är inte ett villkor för om data godtas.
 
 Källor: [Tibbers GraphQL-schema](https://developer.tibber.com/api/reference.md), [Tibbers API-guide](https://developer.tibber.com/docs/guides/calling-api), [Nord Pools övergång till 15 minuters marknadstid](https://www.nordpoolgroup.com/en/trading/transition-to-15-minute-market-time-unit-mtu/).
 
-## Cache, klocka och tidsbegränsade beslut
+## Prisbild, RAM-bok och tidsbegränsade beslut
 
-- En validerad prisplan kan sparas lokalt för i dag och i morgon.
+- Shadow-implementationen behåller validerade planer för i dag och i morgon endast i RAM/PSRAM. En omstart kräver en ny hämtning; ingen prisplan skrivs till NVS eller flash.
+- Panelsidan öppnas genom ett tryck på **Tibber Live**-pillret. Den visar prislagrets hypotetiska högsta tillåtna effekt just nu och listar de kommande 24 timmarnas `0 %`- och `50 %`-kvartar med totalpris och rang inom respektive dygn.
+- Om morgondagens priser ännu inte har publicerats visas bara den tillgängliga delen fram till midnatt med ett neutralt informationsmeddelande. Detta är normal partiell täckning, inte ett synkfel.
+- `0 %`, `50 %` och `Full` är högsta tillåtna nivå från just prislagret, inte ett löfte om att patronen kommer att gå. Termostat och överordnade skydd kan alltid begränsa mer.
 - Den aktiva kvarten är ett halvöppet intervall `[start, slut)`, så exakt kvartsskifte väljer den nya kvarten utan glapp.
 - En begränsning översätts till en kort monoton lease, normalt högst 60 sekunder och aldrig längre än den aktuella kvartens ursprungliga sluttid. Ett fungerande kontrollflöde förnyar den medan samma begränsning gäller.
 - Ett nät- eller API-fel får inte förlänga leasen.
-- Vid omstart krävs både validerad cache och trovärdig väggklocka; annars är prislagret transparent.
+- Vid omstart krävs en ny validerad RAM-plan och trovärdig väggklocka; annars är prislagret transparent.
 - Prisleasen lagras inte som permanent relätillstånd.
 
 Referens-API:t har en uttrycklig `time_trusted`-grind. `app_time` behöver före firmwareintegrationen exponera tidskvalitet, exempelvis okänd byggtid, RTC och NTP, och mata denna grind. NTP är bäst. Om RTC ensam ska få aktivera en sparad prisplan är ett separat beslut; en tidszonsmedveten men felställd klocka får inte betraktas som trovärdig bara på grund av sitt format.
@@ -95,20 +104,25 @@ En programvarulease räcker inte om den valda DIN-modulen kan lämna ett relä i
 - lika och negativa priser samt blandad indataordning;
 - avvisning av luckor, dubbletter, icke ändliga värden och fel tider;
 - transparent läge vid saknad plan, BYPASS eller uttryckligen opålitlig tid;
+- standardpaus juni–september, valfri avstängning av pausen och fortsatt synlig råplan;
 - exakt byte vid kvartgränsen och lease endast till kvartsslutet;
 - samspel där pris kan blockera ett steg men fasöverlast kan öka till två;
 - att utgången prislease inte tvingar fram återinkoppling utan strömutrymme.
 - fail-transparent återgång till enbart COALA när både prisleasen och färsk fasdata saknas;
 - kontaktorordning, återläsningskvittens, minsta intervall, timeout/felläge, okänt startläge och BYPASS i den hårdvaruneutrala utgångssekvenseraren.
 
-Firmwaremodulen `main/tibber_price_source.c` är en första, medvetet begränsad shadow-implementation. Den kräver sparat Tibber-hem och NTP-synkroniserad tid, hämtar bara `today`, kontrollerar GraphQL-fel, valuta och ett komplett sammanhängande dygn med 92/96/100 kvartar, rangordnar i RAM/PSRAM och publicerar enbart en läsbar ögonblicksbild. Misslyckade hämtningar återprovas med jitter och exponentiell väntan upp till en timme. Större data läggs i PSRAM men själva task-stacken ligger i internminne eftersom tasken läser NVS-konfiguration. Den sparar ingen plan, hämtar ännu inte morgondagen, visas inte i gränssnittet och kan inte påverka någon utgång. Modulen är avstängd i normal konfiguration. Berörda C-filer har kompilerats med funktionen aktiverad; full länkning på arbetsdatorn stoppades av Windows App Control i verktygskedjans arkiverare och väntar därför på nästa vanliga byggmiljö.
+Den samlade datorbaserade sviten omfattar nu **65 tester**, inklusive de nya säsongsfallen.
+
+Firmwaremodulen `main/tibber_price_source.c` är en medvetet begränsad shadow-implementation. Den kräver sparat Tibber-hem och NTP-synkroniserad tid, frågar efter `today` och `tomorrow`, kontrollerar GraphQL-fel, valuta och varje helt sammanhängande dygn med 92/96/100 kvartar och publicerar en atomisk, läsbar prisbok i RAM/PSRAM. Misslyckade hämtningar återprovas med jitter och exponentiell väntan upp till en timme utan att en fortfarande giltig bok behöver kastas. Större data läggs i PSRAM men själva task-stacken ligger i internminne eftersom tasken läser NVS-konfiguration. Modulen är avstängd i normal konfiguration, sparar ingen plan beständigt och kan inte påverka någon utgång.
+
+Den skrivskyddade sidan i `main/ui.c` visar aktuell hypotetisk prisgräns och paginerar endast de kvartar inom de kommande 24 timmarna som råplanen sätter till `0 %` eller `50 %`. Under säsongspausen markeras beslutet som sommarpaus samtidigt som råplanen fortsätter synas. Hela prisvägens berörda C-enheter har kompilerats separat med shadow-flaggan på, och den villkorsstyrda UI-koden har även verifierats med flaggan av. Full arkivering och länkning på arbetsdatorn stoppas fortfarande av Windows App Control i verktygskedjans arkiverare med felkod 4551. Den nya prisvyn har därför inte flashats eller fältprovats på panelen.
 
 ## Återstående arbetsordning
 
-1. Utöka den befintliga dagens shadow-källa med `tomorrow`, atomiskt byte och validerad beständig cache.
-2. Visa prisplanen och shadow-besluten på panelen utan någon fysisk utgång.
+1. Fullbygg, flasha och observera shadow-läget under flera dygn utan någon fysisk utgång. Kontrollera särskilt dygnsskifte, sen publicering av morgondagen och sommarpausens råplan.
+2. Avgör efter fältprovet om en beständig pris-cache verkligen behövs; nuvarande prisbok är avsiktligt RAM-baserad och hämtas på nytt efter omstart.
 3. Identifiera de två verkliga effektstegen, `F–K`, kontaktorordning och hjälpkontakter tillsammans med elektrikern.
-4. Bestäm komfortgräns, maximal sammanhängande prisblockering och om första versionen endast får använda `Halv`.
+4. Bestäm komfortgräns, maximal sammanhängande prisblockering och om första fysiska versionen endast får använda `Halv`.
 5. Implementera och testa kontaktorsekvensering samt fysisk SMART/BYPASS.
 6. Kör ett kontrollerat fältprov innan prisstyrningen får påverka patronen.
 
@@ -116,4 +130,4 @@ Firmwaremodulen `main/tibber_price_source.c` är en första, medvetet begränsad
 
 Senast verifierade appbild är 1 597 184 byte i en apppartition på 8 388 608 byte, alltså 6 791 424 byte och cirka 81 procent ledigt. Själva rangordningen och en eller två dygns prisposter är små i förhållande till detta. Flashutrymmet är därför inget praktiskt hinder.
 
-Den verkliga resursfrågan är tillfälligt RAM under HTTPS/JSON. Prisfrågan ska därför vara liten, köras separat från kalender/väder när det går och lägga större svarsbuffertar i PSRAM. Två dygn med högst omkring 200 prisposter är en liten beständig cache; hela GraphQL-svaret behöver inte behållas efter validering.
+Den verkliga resursfrågan är tillfälligt RAM under HTTPS/JSON. Prisfrågan ska därför vara liten, köras separat från kalender/väder när det går och lägga större svarsbuffertar i PSRAM. Två dygn med högst omkring 200 prisposter är en liten RAM-bok; hela GraphQL-svaret behöver inte behållas efter validering.

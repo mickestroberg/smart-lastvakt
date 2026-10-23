@@ -4,11 +4,13 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "esp_timer.h"
 #include "lvgl.h"
 #include "sdkconfig.h"
 
+#include "app_config.h"
 #include "app_time.h"
 #include "calendar_source.h"
 #include "cooking_timers.h"
@@ -18,6 +20,10 @@
 #include "phase_source.h"
 #include "shelly_client.h"
 #include "weather_source.h"
+#if CONFIG_LASTVAKT_TIBBER_PRICE_SHADOW
+#include "esp_heap_caps.h"
+#include "tibber_price_source.h"
+#endif
 
 #define COLOR_BG 0x07111F
 #define COLOR_PANEL 0x0D1B2B
@@ -28,6 +34,9 @@
 #define COLOR_MINT 0x56D6A7
 #define COLOR_WARNING 0xFFAA4C
 #define COLOR_DANGER 0xFF5A67
+#define PRICE_VIEW_ROW_COUNT 5
+#define PRICE_WINDOW_SECONDS (24 * 60 * 60)
+#define PRICE_WINDOW_MAX_SLOTS 100
 
 typedef enum {
     LOAD_ZONE_GREEN,
@@ -40,6 +49,7 @@ typedef enum {
     UI_VIEW_PHASE,
     UI_VIEW_CALENDAR,
     UI_VIEW_STATUS,
+    UI_VIEW_PRICE,
     UI_VIEW_SHELLY,
     UI_VIEW_COOKING,
 } ui_view_t;
@@ -49,12 +59,14 @@ typedef struct {
     lv_obj_t *phase_view;
     lv_obj_t *calendar_view;
     lv_obj_t *status_view;
+    lv_obj_t *price_view;
     lv_obj_t *shelly_view;
     lv_obj_t *cooking_view;
     lv_obj_t *clock_large;
     lv_obj_t *clock_small;
     lv_obj_t *calendar_clock;
     lv_obj_t *status_clock;
+    lv_obj_t *price_clock;
     lv_obj_t *shelly_clock;
     lv_obj_t *date;
     lv_obj_t *weather_temperature;
@@ -92,6 +104,18 @@ typedef struct {
     lv_obj_t *status_shelly;
     lv_obj_t *status_setup_url;
     lv_obj_t *status_qr;
+    lv_obj_t *price_source_status;
+    lv_obj_t *price_now_limit;
+    lv_obj_t *price_now_detail;
+    lv_obj_t *price_horizon;
+    lv_obj_t *price_empty;
+    lv_obj_t *price_row[PRICE_VIEW_ROW_COUNT];
+    lv_obj_t *price_row_time[PRICE_VIEW_ROW_COUNT];
+    lv_obj_t *price_row_limit[PRICE_VIEW_ROW_COUNT];
+    lv_obj_t *price_row_value[PRICE_VIEW_ROW_COUNT];
+    lv_obj_t *price_page_label;
+    lv_obj_t *price_previous_button;
+    lv_obj_t *price_next_button;
     lv_obj_t *shelly_connection_status;
     lv_obj_t *shelly_state_large;
     lv_obj_t *shelly_power;
@@ -131,6 +155,12 @@ typedef struct {
     int64_t last_over_threshold_ms;
     int64_t manual_phase_until_ms;
     size_t cooking_editor_index;
+    size_t price_page;
+    int64_t price_last_update_s;
+    bool price_summer_pause;
+#if CONFIG_LASTVAKT_TIBBER_PRICE_SHADOW
+    tibber_price_slot_snapshot_t *price_slots;
+#endif
     ui_view_t active_view;
     ui_view_t phase_return_view;
     cooking_timers_t cooking_timers;
@@ -580,6 +610,8 @@ static lv_obj_t *view_object(ui_view_t view)
             return s_ui.calendar_view;
         case UI_VIEW_STATUS:
             return s_ui.status_view;
+        case UI_VIEW_PRICE:
+            return s_ui.price_view;
         case UI_VIEW_SHELLY:
             return s_ui.shelly_view;
         case UI_VIEW_COOKING:
@@ -597,6 +629,7 @@ static void show_view(ui_view_t view)
         s_ui.phase_view,
         s_ui.calendar_view,
         s_ui.status_view,
+        s_ui.price_view,
         s_ui.shelly_view,
         s_ui.cooking_view,
     };
@@ -633,6 +666,17 @@ static void show_status_view(void)
 {
     s_ui.manual_phase_until_ms = 0;
     show_view(UI_VIEW_STATUS);
+}
+
+static void update_price_view(bool force);
+
+static void show_price_view(void)
+{
+    s_ui.manual_phase_until_ms = 0;
+    s_ui.price_page = 0;
+    s_ui.price_last_update_s = -1;
+    show_view(UI_VIEW_PRICE);
+    update_price_view(true);
 }
 
 static void show_shelly_view(void)
@@ -682,6 +726,32 @@ static void status_back_event(lv_event_t *event)
 {
     (void)event;
     show_view(UI_VIEW_CLOCK);
+}
+
+static void price_panel_event(lv_event_t *event)
+{
+    (void)event;
+    show_price_view();
+}
+
+static void price_back_event(lv_event_t *event)
+{
+    (void)event;
+    show_view(UI_VIEW_CLOCK);
+}
+
+static void price_previous_event(lv_event_t *event)
+{
+    (void)event;
+    if (s_ui.price_page > 0) --s_ui.price_page;
+    update_price_view(true);
+}
+
+static void price_next_event(lv_event_t *event)
+{
+    (void)event;
+    ++s_ui.price_page;
+    update_price_view(true);
 }
 
 static void shelly_panel_event(lv_event_t *event)
@@ -807,6 +877,10 @@ static void create_clock_view(lv_obj_t *root)
     lv_obj_set_size(s_ui.source_badge, 128, 34);
     lv_obj_align(s_ui.source_badge, LV_ALIGN_TOP_RIGHT, -36, 22);
     style_panel(s_ui.source_badge, 0x392814, 17);
+    lv_obj_add_flag(s_ui.source_badge, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_ui.source_badge, 10);
+    lv_obj_set_style_bg_color(s_ui.source_badge, lv_color_hex(COLOR_PANEL_LIGHT), LV_STATE_PRESSED);
+    lv_obj_add_event_cb(s_ui.source_badge, price_panel_event, LV_EVENT_CLICKED, NULL);
     s_ui.source_badge_label = make_label(s_ui.source_badge, &lv_font_lastvakt_12, COLOR_WARNING);
     lv_label_set_text(s_ui.source_badge_label, "ANSLUTER");
     lv_obj_center(s_ui.source_badge_label);
@@ -1125,6 +1199,101 @@ static void create_status_view(lv_obj_t *root)
     lv_label_set_text(qr_hint, "Mobilen måste vara på samma nätverk");
     lv_obj_set_style_text_align(qr_hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_pos(qr_hint, 545, 372);
+}
+
+static void create_price_view(lv_obj_t *root)
+{
+    s_ui.price_view = lv_obj_create(root);
+    lv_obj_set_size(s_ui.price_view, 800, 480);
+    lv_obj_center(s_ui.price_view);
+    style_panel(s_ui.price_view, COLOR_BG, 0);
+
+    lv_obj_t *title = make_label(s_ui.price_view, &lv_font_lastvakt_24, COLOR_TEXT);
+    lv_label_set_text(title, "Elpatron och pris");
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 36, 18);
+
+    lv_obj_t *subtitle = make_label(s_ui.price_view, &lv_font_lastvakt_12, COLOR_WARNING);
+    lv_label_set_text(subtitle, "SKUGGLÄGE • STYR INGENTING");
+    lv_obj_align(subtitle, LV_ALIGN_TOP_LEFT, 36, 52);
+
+    s_ui.price_clock = make_label(s_ui.price_view, &lv_font_lastvakt_24, COLOR_TEXT);
+    lv_label_set_text(s_ui.price_clock, "--:--");
+    lv_obj_align(s_ui.price_clock, LV_ALIGN_TOP_RIGHT, -178, 24);
+
+    lv_obj_t *back = make_button(s_ui.price_view, "Tillbaka", price_back_event);
+    lv_obj_align(back, LV_ALIGN_TOP_RIGHT, -36, 14);
+
+    lv_obj_t *now_panel = lv_obj_create(s_ui.price_view);
+    lv_obj_set_size(now_panel, 728, 108);
+    lv_obj_set_pos(now_panel, 36, 78);
+    style_panel(now_panel, COLOR_PANEL, 18);
+
+    s_ui.price_source_status = make_label(now_panel, &lv_font_lastvakt_12, COLOR_CYAN);
+    lv_label_set_text(
+        s_ui.price_source_status,
+        "PRISLAGRETS HÖGSTA TILLÅTNA EFFEKT NU • ÖVRIGA SKYDD KAN BEGRÄNSA MER");
+    lv_obj_set_pos(s_ui.price_source_status, 18, 12);
+
+    s_ui.price_now_limit = make_label(now_panel, &lv_font_lastvakt_24, COLOR_MUTED);
+    lv_label_set_text(s_ui.price_now_limit, "VÄNTAR PÅ PRISER");
+    lv_obj_set_pos(s_ui.price_now_limit, 18, 36);
+
+    s_ui.price_now_detail = make_label(now_panel, &lv_font_lastvakt_12, COLOR_MUTED);
+    lv_obj_set_width(s_ui.price_now_detail, 692);
+    lv_label_set_long_mode(s_ui.price_now_detail, LV_LABEL_LONG_DOT);
+    lv_label_set_text(s_ui.price_now_detail, "Pris och dygnsrankning visas här när Tibber-planen är laddad.");
+    lv_obj_set_pos(s_ui.price_now_detail, 18, 77);
+
+    s_ui.price_horizon = make_label(s_ui.price_view, &lv_font_lastvakt_12, COLOR_MUTED);
+    lv_obj_set_width(s_ui.price_horizon, 728);
+    lv_label_set_long_mode(s_ui.price_horizon, LV_LABEL_LONG_DOT);
+    lv_label_set_text(s_ui.price_horizon, "Hämtar prisplan…");
+    lv_obj_set_pos(s_ui.price_horizon, 36, 198);
+
+    for (size_t i = 0; i < PRICE_VIEW_ROW_COUNT; ++i) {
+        lv_obj_t *row = lv_obj_create(s_ui.price_view);
+        lv_obj_set_size(row, 728, 34);
+        lv_obj_set_pos(row, 36, 220 + (int)i * 37);
+        style_panel(row, COLOR_PANEL, 10);
+        s_ui.price_row[i] = row;
+
+        s_ui.price_row_time[i] = make_label(row, &lv_font_lastvakt_12, COLOR_TEXT);
+        lv_obj_set_width(s_ui.price_row_time[i], 245);
+        lv_label_set_long_mode(s_ui.price_row_time[i], LV_LABEL_LONG_DOT);
+        lv_obj_align(s_ui.price_row_time[i], LV_ALIGN_LEFT_MID, 14, 0);
+
+        s_ui.price_row_limit[i] = make_label(row, &lv_font_lastvakt_16, COLOR_WARNING);
+        lv_obj_set_width(s_ui.price_row_limit[i], 150);
+        lv_obj_set_style_text_align(s_ui.price_row_limit[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_align(s_ui.price_row_limit[i], LV_ALIGN_LEFT_MID, 270, 0);
+
+        s_ui.price_row_value[i] = make_label(row, &lv_font_lastvakt_12, COLOR_MUTED);
+        lv_obj_set_width(s_ui.price_row_value[i], 278);
+        lv_label_set_long_mode(s_ui.price_row_value[i], LV_LABEL_LONG_DOT);
+        lv_obj_set_style_text_align(s_ui.price_row_value[i], LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+        lv_obj_align(s_ui.price_row_value[i], LV_ALIGN_RIGHT_MID, -14, 0);
+        lv_obj_add_flag(row, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    s_ui.price_empty = make_label(s_ui.price_view, &lv_font_lastvakt_16, COLOR_MUTED);
+    lv_obj_set_width(s_ui.price_empty, 680);
+    lv_obj_set_style_text_align(s_ui.price_empty, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_label_set_text(s_ui.price_empty, "Inga 0- eller 50-procentskvartar i den tillgängliga planen.");
+    lv_obj_align(s_ui.price_empty, LV_ALIGN_CENTER, 0, 54);
+
+    s_ui.price_previous_button = make_button(s_ui.price_view, "Föregående", price_previous_event);
+    lv_obj_set_size(s_ui.price_previous_button, 126, 40);
+    lv_obj_set_pos(s_ui.price_previous_button, 36, 430);
+
+    s_ui.price_page_label = make_label(s_ui.price_view, &lv_font_lastvakt_12, COLOR_MUTED);
+    lv_obj_set_width(s_ui.price_page_label, 300);
+    lv_obj_set_style_text_align(s_ui.price_page_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_label_set_text(s_ui.price_page_label, "Sida 1 av 1");
+    lv_obj_align(s_ui.price_page_label, LV_ALIGN_BOTTOM_MID, 0, -22);
+
+    s_ui.price_next_button = make_button(s_ui.price_view, "Nästa", price_next_event);
+    lv_obj_set_size(s_ui.price_next_button, 126, 40);
+    lv_obj_set_pos(s_ui.price_next_button, 638, 430);
 }
 
 static void create_shelly_view(lv_obj_t *root)
@@ -1746,6 +1915,289 @@ static void update_timer_alarm(int64_t now_ms)
     lv_obj_move_foreground(s_ui.timer_alarm_button);
 }
 
+static void hide_price_rows(void)
+{
+    for (size_t i = 0; i < PRICE_VIEW_ROW_COUNT; ++i) {
+        lv_obj_add_flag(s_ui.price_row[i], LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void set_price_navigation(size_t page_count)
+{
+    const bool has_previous = page_count > 0 && s_ui.price_page > 0;
+    const bool has_next = page_count > 0 && s_ui.price_page + 1 < page_count;
+    if (has_previous) lv_obj_clear_state(s_ui.price_previous_button, LV_STATE_DISABLED);
+    else lv_obj_add_state(s_ui.price_previous_button, LV_STATE_DISABLED);
+    if (has_next) lv_obj_clear_state(s_ui.price_next_button, LV_STATE_DISABLED);
+    else lv_obj_add_state(s_ui.price_next_button, LV_STATE_DISABLED);
+
+    char page_text[32];
+    snprintf(
+        page_text,
+        sizeof(page_text),
+        "Sida %u av %u",
+        (unsigned)(page_count == 0 ? 0 : s_ui.price_page + 1),
+        (unsigned)page_count);
+    lv_label_set_text(s_ui.price_page_label, page_text);
+}
+
+#if CONFIG_LASTVAKT_TIBBER_PRICE_SHADOW
+static const char *price_tier_text(tibber_price_shadow_tier_t tier, bool raw_plan)
+{
+    switch (tier) {
+        case TIBBER_PRICE_SHADOW_FULL_BLOCK: return raw_plan ? "RÅPLAN 0 %" : "HÖGST 0 %";
+        case TIBBER_PRICE_SHADOW_HALF_LIMIT: return raw_plan ? "RÅPLAN 50 %" : "HÖGST 50 %";
+        case TIBBER_PRICE_SHADOW_NO_LIMIT:
+        default: return raw_plan ? "RÅPLAN 100 %" : "INGEN PRISBEGRÄNSNING";
+    }
+}
+
+static uint32_t price_tier_color(tibber_price_shadow_tier_t tier)
+{
+    switch (tier) {
+        case TIBBER_PRICE_SHADOW_FULL_BLOCK: return COLOR_DANGER;
+        case TIBBER_PRICE_SHADOW_HALF_LIMIT: return COLOR_WARNING;
+        case TIBBER_PRICE_SHADOW_NO_LIMIT:
+        default: return COLOR_MINT;
+    }
+}
+
+static void format_price_value(float total_price, const char *currency, char *output, size_t size)
+{
+    snprintf(
+        output,
+        size,
+        "%.3f %s/kWh",
+        total_price,
+        currency != NULL && currency[0] != '\0' ? currency : "SEK");
+    for (char *p = output; *p != '\0'; ++p) {
+        if (*p == '.') *p = ',';
+    }
+}
+
+static void format_price_interval(
+    const tibber_price_slot_snapshot_t *slot,
+    time_t now,
+    char *output,
+    size_t size)
+{
+    struct tm current = {0};
+    struct tm starts = {0};
+    struct tm ends = {0};
+    localtime_r(&now, &current);
+    localtime_r(&slot->starts_at, &starts);
+    localtime_r(&slot->ends_at, &ends);
+    struct tm next_day = current;
+    next_day.tm_mday += 1;
+    next_day.tm_hour = 12;
+    next_day.tm_min = 0;
+    next_day.tm_sec = 0;
+    next_day.tm_isdst = -1;
+    const time_t next_day_value = mktime(&next_day);
+    localtime_r(&next_day_value, &next_day);
+
+    const bool is_today = starts.tm_year == current.tm_year && starts.tm_yday == current.tm_yday;
+    const bool is_tomorrow = starts.tm_year == next_day.tm_year && starts.tm_yday == next_day.tm_yday;
+    char day_text[12];
+    if (is_today) snprintf(day_text, sizeof(day_text), "IDAG");
+    else if (is_tomorrow) snprintf(day_text, sizeof(day_text), "IMORGON");
+    else strftime(day_text, sizeof(day_text), "%d/%m", &starts);
+    char start_text[8];
+    char end_text[8];
+    char start_zone[8];
+    char end_zone[8];
+    strftime(start_text, sizeof(start_text), "%H:%M", &starts);
+    strftime(end_text, sizeof(end_text), "%H:%M", &ends);
+    strftime(start_zone, sizeof(start_zone), "%Z", &starts);
+    strftime(end_zone, sizeof(end_zone), "%Z", &ends);
+    if (strcmp(start_zone, end_zone) == 0) {
+        snprintf(output, size, "%s %s-%s %s", day_text, start_text, end_text, start_zone);
+    } else {
+        snprintf(
+            output,
+            size,
+            "%s %s %s-%s %s",
+            day_text,
+            start_text,
+            start_zone,
+            end_text,
+            end_zone);
+    }
+}
+
+static bool price_summer_pause_active(time_t now)
+{
+    if (!s_ui.price_summer_pause) return false;
+    struct tm local = {0};
+    localtime_r(&now, &local);
+    const int month = local.tm_mon + 1;
+    return month >= 6 && month <= 9;
+}
+#endif
+
+static void update_price_view(bool force)
+{
+    const int64_t now_seconds = esp_timer_get_time() / 1000000;
+    if (!force && now_seconds == s_ui.price_last_update_s) return;
+    s_ui.price_last_update_s = now_seconds;
+    hide_price_rows();
+
+#if CONFIG_LASTVAKT_TIBBER_PRICE_SHADOW
+    if (s_ui.price_slots == NULL) {
+        lv_label_set_text(s_ui.price_now_limit, "KAN INTE VISA PRISPLANEN");
+        lv_obj_set_style_text_color(s_ui.price_now_limit, lv_color_hex(COLOR_DANGER), LV_PART_MAIN);
+        lv_label_set_text(s_ui.price_now_detail, "Minnet för den skrivskyddade prisvyn kunde inte reserveras.");
+        lv_label_set_text(s_ui.price_horizon, "Inga utgångar påverkas.");
+        lv_label_set_text(s_ui.price_empty, "Prisplanen är inte tillgänglig.");
+        lv_obj_clear_flag(s_ui.price_empty, LV_OBJ_FLAG_HIDDEN);
+        set_price_navigation(0);
+        return;
+    }
+
+    const time_t now = time(NULL);
+    tibber_price_shadow_snapshot_t current = {0};
+    const tibber_price_source_state_t source_state = tibber_price_source_get(&current);
+    tibber_price_book_metadata_t metadata = {0};
+    const size_t slot_count = tibber_price_source_copy_window(
+        now,
+        now + PRICE_WINDOW_SECONDS,
+        s_ui.price_slots,
+        PRICE_WINDOW_MAX_SLOTS,
+        &metadata);
+    const bool summer_pause = price_summer_pause_active(now);
+
+    if (current.available) {
+        char price[40];
+        format_price_value(current.total_price, current.currency, price, sizeof(price));
+        if (summer_pause) {
+            lv_label_set_text(s_ui.price_now_limit, "SOMMARPAUS • INGEN PRISBEGRÄNSNING");
+            lv_obj_set_style_text_color(s_ui.price_now_limit, lv_color_hex(COLOR_CYAN), LV_PART_MAIN);
+            char detail[192];
+            snprintf(
+                detail,
+                sizeof(detail),
+                "OM AKTIVT NU: %s • %s • PLATS %u/%u",
+                price_tier_text(current.suggested_tier, false),
+                price,
+                (unsigned)current.descending_rank,
+                (unsigned)current.day_slot_count);
+            lv_label_set_text(s_ui.price_now_detail, detail);
+        } else {
+            lv_label_set_text(s_ui.price_now_limit, price_tier_text(current.suggested_tier, false));
+            lv_obj_set_style_text_color(
+                s_ui.price_now_limit,
+                lv_color_hex(price_tier_color(current.suggested_tier)),
+                LV_PART_MAIN);
+            char detail[192];
+            snprintf(
+                detail,
+                sizeof(detail),
+                "%s • PLATS %u/%u • TERMOSTAT/COALA/FASVAKT GÄLLER OCKSÅ",
+                price,
+                (unsigned)current.descending_rank,
+                (unsigned)current.day_slot_count);
+            lv_label_set_text(s_ui.price_now_detail, detail);
+        }
+    } else {
+        lv_label_set_text(s_ui.price_now_limit, "INGET AKTUELLT PRISBESLUT");
+        lv_obj_set_style_text_color(s_ui.price_now_limit, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
+        char detail[160];
+        snprintf(detail, sizeof(detail), "%s. Inga utgångar påverkas.", tibber_price_source_status_text());
+        lv_label_set_text(s_ui.price_now_detail, detail);
+    }
+
+    size_t restricted_count = 0;
+    for (size_t i = 0; i < slot_count; ++i) {
+        if (s_ui.price_slots[i].suggested_tier != TIBBER_PRICE_SHADOW_NO_LIMIT) {
+            ++restricted_count;
+        }
+    }
+    const size_t page_count =
+        restricted_count == 0 ? 0 : (restricted_count + PRICE_VIEW_ROW_COUNT - 1) / PRICE_VIEW_ROW_COUNT;
+    if (page_count == 0) s_ui.price_page = 0;
+    else if (s_ui.price_page >= page_count) s_ui.price_page = page_count - 1;
+    set_price_navigation(page_count);
+
+    char horizon[192];
+    if (metadata.available) {
+        const bool full_horizon = metadata.coverage_end >= now + PRICE_WINDOW_SECONDS;
+        snprintf(
+            horizon,
+            sizeof(horizon),
+            "%u valda 0/50-kvartar kommande 24 timmar%s%s",
+            (unsigned)restricted_count,
+            full_horizon ? " • komplett 24-timmarsvy" : " • delvis täckning",
+            full_horizon
+                ? ""
+                : (metadata.tomorrow_available
+                       ? "; prisdata täcker ännu inte hela perioden"
+                       : "; morgondagens priser är ännu inte publicerade"));
+    } else {
+        snprintf(horizon, sizeof(horizon), "%s", tibber_price_source_status_text());
+    }
+    lv_label_set_text(s_ui.price_horizon, horizon);
+    lv_obj_set_style_text_color(
+        s_ui.price_horizon,
+        lv_color_hex(source_state == TIBBER_PRICE_SOURCE_READY ? COLOR_MUTED : COLOR_WARNING),
+        LV_PART_MAIN);
+
+    if (restricted_count == 0) {
+        lv_label_set_text(
+            s_ui.price_empty,
+            metadata.available
+                ? "Inga 0- eller 50-procentskvartar i den tillgängliga delen av planen."
+                : "Prisplanen visas här när Tibber-priser och tillförlitlig tid finns.");
+        lv_obj_clear_flag(s_ui.price_empty, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_obj_add_flag(s_ui.price_empty, LV_OBJ_FLAG_HIDDEN);
+    const size_t first = s_ui.price_page * PRICE_VIEW_ROW_COUNT;
+    size_t restricted_index = 0;
+    size_t row_index = 0;
+    for (size_t i = 0; i < slot_count && row_index < PRICE_VIEW_ROW_COUNT; ++i) {
+        const tibber_price_slot_snapshot_t *slot = &s_ui.price_slots[i];
+        if (slot->suggested_tier == TIBBER_PRICE_SHADOW_NO_LIMIT) continue;
+        if (restricted_index++ < first) continue;
+
+        char interval[48];
+        char price[40];
+        char value[80];
+        format_price_interval(slot, now, interval, sizeof(interval));
+        format_price_value(slot->total_price, slot->currency, price, sizeof(price));
+        snprintf(
+            value,
+            sizeof(value),
+            "%s • plats %u/%u",
+            price,
+            (unsigned)slot->day_rank,
+            (unsigned)slot->day_slot_count);
+        lv_label_set_text(s_ui.price_row_time[row_index], interval);
+        lv_label_set_text(
+            s_ui.price_row_limit[row_index],
+            price_tier_text(slot->suggested_tier, price_summer_pause_active(slot->starts_at)));
+        lv_obj_set_style_text_color(
+            s_ui.price_row_limit[row_index],
+            lv_color_hex(price_tier_color(slot->suggested_tier)),
+            LV_PART_MAIN);
+        lv_label_set_text(s_ui.price_row_value[row_index], value);
+        lv_obj_clear_flag(s_ui.price_row[row_index], LV_OBJ_FLAG_HIDDEN);
+        ++row_index;
+    }
+#else
+    (void)force;
+    lv_label_set_text(s_ui.price_now_limit, "PRIS-SKUGGLÄGET ÄR AVSTÄNGT");
+    lv_obj_set_style_text_color(s_ui.price_now_limit, lv_color_hex(COLOR_MUTED), LV_PART_MAIN);
+    lv_label_set_text(
+        s_ui.price_now_detail,
+        "Denna byggning hämtar inte kvartpriser och kan inte påverka några utgångar.");
+    lv_label_set_text(s_ui.price_horizon, "Aktiveras uttryckligen vid en senare testbyggning.");
+    lv_label_set_text(s_ui.price_empty, "Ingen prisplan är laddad.");
+    lv_obj_clear_flag(s_ui.price_empty, LV_OBJ_FLAG_HIDDEN);
+    set_price_navigation(0);
+#endif
+}
+
 static void ui_timer(lv_timer_t *timer)
 {
     (void)timer;
@@ -1761,9 +2213,11 @@ static void ui_timer(lv_timer_t *timer)
     lv_label_set_text(s_ui.clock_small, clock_text);
     lv_label_set_text(s_ui.calendar_clock, clock_text);
     lv_label_set_text(s_ui.status_clock, clock_text);
+    lv_label_set_text(s_ui.price_clock, clock_text);
     lv_label_set_text(s_ui.shelly_clock, clock_text);
     lv_label_set_text(s_ui.cooking_clock, clock_text);
     lv_label_set_text(s_ui.date, date_text);
+    if (s_ui.active_view == UI_VIEW_PRICE) update_price_view(false);
 
     weather_sample_t weather = {0};
     const weather_source_state_t weather_state = weather_source_get(&weather);
@@ -2207,11 +2661,22 @@ void ui_create(void)
     lv_obj_set_style_bg_opa(root, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
     cooking_timers_init(&s_ui.cooking_timers);
+    app_config_t config = {0};
+    s_ui.price_summer_pause =
+        app_config_load(&config) == ESP_OK ? config.price_summer_pause : true;
+    memset(&config, 0, sizeof(config));
+#if CONFIG_LASTVAKT_TIBBER_PRICE_SHADOW
+    s_ui.price_slots = heap_caps_calloc(
+        PRICE_WINDOW_MAX_SLOTS,
+        sizeof(*s_ui.price_slots),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#endif
 
     create_clock_view(root);
     create_phase_view(root);
     create_calendar_view(root);
     create_status_view(root);
+    create_price_view(root);
     create_shelly_view(root);
     create_cooking_view(root);
     create_timer_alarm(root);

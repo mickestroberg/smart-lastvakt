@@ -19,6 +19,7 @@ typedef struct {
     char tibber_home_id[LASTVAKT_HOME_ID_MAX + 1];
     char calendar_ical_url[LASTVAKT_CALENDAR_URL_MAX + 1];
     char shelly_host[LASTVAKT_SHELLY_HOST_MAX + 1];
+    bool price_summer_pause;
 } app_config_t;
 
 esp_err_t app_config_init(void);

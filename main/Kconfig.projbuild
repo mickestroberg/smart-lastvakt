@@ -52,11 +52,12 @@ menu "Example Configuration"
             bool "Enable read-only Tibber quarter-price shadow source"
             default n
             help
-                Downloads and ranks today's quarter-hourly Tibber total prices in
-                RAM, but does not connect them to the UI or any physical output.
-                Requires a previously saved explicit Tibber home ID and an
-                NTP-synchronized clock. No schedule is persisted or prefetched
-                for tomorrow.
+                Downloads and ranks today's and, when published, tomorrow's
+                quarter-hourly Tibber total prices in RAM. A read-only page shows
+                the current hypothetical price limit and the coming 24 hours'
+                half- and full-block quarters. The source has no connection to
+                any physical output. Requires a previously saved explicit Tibber
+                home ID and an NTP-synchronized clock. No schedule is persisted.
 
         config LASTVAKT_TIBBER_PRICE_SHADOW_OFF_QUARTERS
             int "Shadow: number of highest-price quarters marked fully blocked"
