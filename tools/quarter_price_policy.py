@@ -60,14 +60,18 @@ class QuarterPrice:
 class PricePolicyConfig:
     """Ranking quotas for each *actual* local day.
 
-    The defaults mean five most expensive quarters off, the following ten at
-    half power, and all remaining quarters unrestricted by price.  The ranked
-    schedule is still built during the default June--September seasonal pause,
-    but the effective decision remains transparent.
+    The version-1 defaults put the 15 most expensive quarters at half power and
+    leave all remaining quarters unrestricted by price.  No quarter is turned
+    fully off by default, avoiding whole-unit power cycling and its independent
+    restart delay.  ``off_quarters`` remains configurable for future shadow
+    simulation, but is deliberately zero in the active-safe default.
+
+    The ranked schedule is still built during the default June--September
+    seasonal pause, but the effective decision remains transparent.
     """
 
-    off_quarters: int = 5
-    half_quarters: int = 10
+    off_quarters: int = 0
+    half_quarters: int = 15
     timezone_name: str = DEFAULT_TIMEZONE
     expected_currency: str = DEFAULT_CURRENCY
     inactive_months: tuple[int, ...] = DEFAULT_INACTIVE_MONTHS

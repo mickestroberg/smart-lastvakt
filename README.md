@@ -29,9 +29,9 @@ En frikopplad, datorbaserad referensmodell för framtida tvåstegsstyrning finns
 - Saknade eller äldre Tibbervärden får aldrig styra reläet; mikroskyddet kräver ett verkligt L1-värde från den aktuella anslutningen som är högst fem sekunder gammalt.
 - Tibberflödet återansluts efter ren stängning, nätverks- eller protokollfel, uteblivet anslutningskvitto och om någon fas saknas eller blir för gammal. WebSocket-klienten försöker normalt igen var femte sekund; om den ändå förblir frånkopplad i 30 sekunder återskapas hela anslutningen. Misslyckad upptäckt eller start glesas stegvis ut till högst två minuter.
 - Panelen hittar inte på fasvärden vid avbrott. Senaste verkliga värde visas grått i högst fem minuter och ersätts sedan med `--`; bara färska värden kan ge färgvarning eller reläbeslut.
-- Ett valfritt och standardmässigt avstängt kvartspris-shadow kan nås genom att trycka på **Tibber Live**-pillret. Prissidan visar vilken högsta effekt prislagret hypotetiskt skulle tillåta nu samt de kommande 24 timmarnas `0 %`- och `50 %`-kvartar med totalpris och dygnsrang. Den är endast en simulering och har ingen koppling till Shelly, COALA, kontaktorer eller annan fysisk utgång.
+- Ett valfritt och standardmässigt avstängt kvartspris-shadow kan nås genom att trycka på **Tibber Live**-pillret. Prissidan visar vilken högsta effekt prislagret hypotetiskt skulle tillåta nu samt de kommande 24 timmarnas begränsade kvartar med totalpris och dygnsrang. Säker v1 markerar dygnets 15 dyraste kvartar som **högst 50 %** och lämnar övriga kvartar utan prisbegränsning. Sidan är endast en simulering och har ingen koppling till Shelly, COALA, kontaktorer eller annan fysisk utgång.
 - Prisplanen hålls endast i RAM och omfattar dagens och, när Tibber har publicerat den, morgondagens validerade dygn. Fram till dess visar sidan lugnt den kortare tillgängliga horisonten i stället för ett fel.
-- Prisbegränsningen har en valbar, standardaktiverad sommarpaus för juni–september. Under pausen är den hypotetiska prisbegränsningen transparent, men råplanens `0 %`- och `50 %`-kvartar visas fortfarande för jämförelse. Inställningen finns på den lokala installationssidan och sparas på enheten.
+- Prisbegränsningen har en valbar, standardaktiverad sommarpaus för juni–september. Under pausen är den hypotetiska prisbegränsningen transparent, men råplanens `50 %`-kvartar visas fortfarande för jämförelse. Inställningen finns på den lokala installationssidan och sparas på enheten.
 - Tydliga belastningszoner: grönt till 10 A, orange till 17,5 A och rött över 17,5 A med 25 A huvudsäkring.
 - Sidan **Laga mat** innehåller fyra generiska, parallella timrar: **TIMER 1** till **TIMER 4**. Varje timer öppnas genom att trycka på sitt kort.
 - Tiden ställs i hela timmar och minuter med knapparna `- 1 h`, `+ 1 h`, `- 1 min` och `+ 1 min`. Knapparna kan hållas inne för upprepad ändring. Timern kan startas, pausas, fortsättas, nollställas och kvitteras när den är klar.
@@ -46,7 +46,7 @@ En frikopplad, datorbaserad referensmodell för framtida tvåstegsstyrning finns
 - En enkel gemensam inköpslista med möjlighet att lägga till exempelvis ”mjölk” från mobil eller display.
 - Separata Shelly-pluggar till diskmaskin, tvättmaskin och torktumlare. En framtida funktion kan tolka varje maskins effektprofil som **viloläge → körning → varaktigt låg effekt → klar** och därefter skicka en notis. Push- eller SMS-tjänst är ännu inte vald. Övervakningen ska inte kunna fjärrstarta någon maskin automatiskt.
 - Fortsatt bedömning av Shelly-pluggens lämplighet för mikron och apparatmanualens begränsning av extern styrning.
-- Fysisk pris- och fasstyrd begränsning av elpatronens två effektsteg som ett smart tillägg i serie med den separata COALA-vakten. Kvartspolicyn, den skrivskyddade prissimuleringen och införandeplanen finns i [PRICE-CONTROL-POLICY.md](PRICE-CONTROL-POLICY.md); verifierade apparatuppgifter och öppna konstruktionsfrågor finns i [HARDWARE-NOTES.md](HARDWARE-NOTES.md).
+- Fysisk, underordnad begränsning av elpatronen som ett smart tillägg till den separata COALA-vakten. Prislagrets säkra v1 ska bara växla mellan ingen prisbegränsning och högst halv effekt, sannolikt via `F–K` efter elektrikerns verifiering; den separata fasvaktslösningen kan senare behöva fler steg. Kvartspolicyn, den skrivskyddade prissimuleringen och införandeplanen finns i [PRICE-CONTROL-POLICY.md](PRICE-CONTROL-POLICY.md); verifierade apparatuppgifter och öppna konstruktionsfrågor finns i [HARDWARE-NOTES.md](HARDWARE-NOTES.md).
 
 Kalendern läses skrivskyddat via Googles hemliga iCal-adress. Adressen lagras endast på enheten, aldrig i Git-förrådet eller i loggarna.
 
@@ -80,7 +80,7 @@ idf.py build
 
 ## Testa styrprincipen utan hårdvara
 
-Referensmodellerna använder endast Pythons standardbibliotek. De **65** testerna omfattar den framtida tvåstegsstyrningen för elpatronen, säker kontaktorsekvensering, 15-minutersprisernas 92/96/100-kvartdygn, juni–september-pausen och tidsbegränsade blockeringar, mikrons ensidiga 20 A-skydd samt matlagningstimrarnas tillstånd och monotona nedräkning:
+Referensmodellerna använder endast Pythons standardbibliotek. De **66** testerna omfattar den framtida tvåstegsstyrningen för elpatronen, säker kontaktorsekvensering, v1-prisregelns 0 `Av` + 15 `Halv`, 15-minutersprisernas 92/96/100-kvartdygn, juni–september-pausen och tidsbegränsade blockeringar, mikrons ensidiga 20 A-skydd samt matlagningstimrarnas tillstånd och monotona nedräkning:
 
 ```powershell
 python -m unittest discover -s tests -v
@@ -113,7 +113,7 @@ De tre färdiga bilderna ligger även i `firmware/` och har följande offset:
 - mikrons automatiska L1-frånkopplingsgräns, standard 20 A;
 - Shellyeffekt som räknas som aktiv mikro, standard 500 W;
 - högsta tillåtna ålder på Tibbervärdet för reläbeslut, standard 5 sekunder;
-- ett standardmässigt avstängt, skrivskyddat Tibber-kvartspris-shadow med 5 `Av`- och 10 `Halv`-kvartar per validerat dygn. Det har ingen koppling till någon fysisk utgång.
+- ett standardmässigt avstängt, skrivskyddat Tibber-kvartspris-shadow med 0 `Av`- och 15 `Halv`-kvartar per validerat dygn. `Av` finns bara kvar som en framtida konfigurations- och simuleringsmöjlighet; säker v1 använder aldrig priset för totalstopp och har ingen koppling till någon fysisk utgång.
 
 Den lokala installationssidan har dessutom en standardaktiverad inställning som gör prislagret transparent under juni–september. Den råa planen förblir synlig på prissidan även under pausen.
 

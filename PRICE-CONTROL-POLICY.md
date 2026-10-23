@@ -2,7 +2,7 @@
 
 Detta dokument beskriver den planerade prisbegränsningen av Relek PF 9 kW och dess samverkan med fasvakten och COALA. Den körbara referensen finns i `tools/quarter_price_policy.py` och testas av `tests/test_quarter_price_policy.py`.
 
-Beslutsreferensen är **inte** inkopplad till någon fysisk utgång. Firmware innehåller nu dessutom en separat, standardmässigt avstängd Tibber-källa som kan hämta och rangordna dagens och morgondagens priser i skrivskyddat shadow mode. En egen panelsida visar besluten som simulering, men källan har ingen beroendekedja till Shelly, COALA eller relä-API. Prisfunktionen ska förbli bortkopplad från verklig styrning tills elektrikern har identifierat de två effektstegen, godkänt kopplingen och ett säkert reservläge har verifierats.
+Beslutsreferensen är **inte** inkopplad till någon fysisk utgång. Firmware innehåller nu dessutom en separat, standardmässigt avstängd Tibber-källa som kan hämta och rangordna dagens och morgondagens priser i skrivskyddat shadow mode. En egen panelsida visar besluten som simulering, men källan har ingen beroendekedja till Shelly, COALA eller relä-API. Prisfunktionen ska förbli bortkopplad från verklig styrning tills elektrikern har verifierat `F–K`, godkänt kopplingen och ett säkert reservläge har provats.
 
 ## Grundregel
 
@@ -11,22 +11,21 @@ Prislagret anger bara den högsta effekt som smartstyrningen får lämna tillgä
 | Prisnivå | Minsta antal blockerade steg | Betydelse |
 |---|---:|---|
 | Full | 0 | Ingen prisbegränsning; övriga skydd bestämmer |
-| Halv | 1 | Minst Re1 blockeras |
-| Av | 2 | Båda smartstyrda stegen blockeras |
+| Halv | 1 | Högst 50 %; fysisk v1-adapter återstår |
+| Av | 2 | Framtida simulering; används inte av säker v1 |
 
-Standardförslaget för ett dygn är:
+Säker v1 för ett dygn är:
 
-- de **5 dyraste** kvartarna: `Av`;
-- plats **6–15**, alltså följande **10** kvartar: `Halv`;
+- de **15 dyraste** kvartarna: `Halv`;
 - övriga kvartar: `Full`.
 
-Detta är en första optimeringsstrategi, inte en fast komfortinställning. Innan `Av` används fysiskt ska vi besluta om maximal sammanhängande avstängning och helst ha pann-/tanktemperatur eller annan verifierad komfortgräns. En försiktig första driftsättning kan begränsa prislagret till högst `Halv` medan endast tänkta `Av`-beslut loggas.
+Prislagret begär alltså aldrig totalstopp i v1. Patronens huvudmatning ska ligga kvar under prissvängningarna; endast den avsedda halvbegränsningen får användas. `F–K` är den främsta kandidaten eftersom Relek beskriver anslutningen som ingång för extern effektvakt, men elektrikern måste verifiera den verkliga kopplingen och prova att begränsningen både går in och släpper som avsett utan oönskad omstart av tvåtimmarsspärren. `Av` och ett valbart antal 0-procentskvartar får finnas kvar i referensmodellen som framtida konfiguration och simulering, men standardantalet är **0** och nivån får inte anslutas till fysisk prisstyrning i v1.
 
 ## Säsongspaus
 
 Prisbegränsningen kan pausas automatiskt under **juni, juli, augusti och september**. Inställningen är påslagen som standard, kan ändras på den lokala installationssidan och sparas i enhetens NVS. Under dessa månader blir prislagrets effektiva beslut `Full`, alltså ingen prisbegränsning. Termostat, COALA, fasvakt och övriga skydd fortsätter naturligtvis att bestämma som vanligt.
 
-Rangordningen körs fortfarande och den råa planen ligger kvar på den skrivskyddade prissidan. Det gör att familjen kan jämföra vilka `0 %`- och `50 %`-kvartar som skulle ha valts utan att säsongspausen påverkar någon last. Referensmodellen tillåter även andra eller inga pausmånader, men panelens nuvarande familjeinställning är det enkla valet juni–september på eller av.
+Rangordningen körs fortfarande och den råa planen ligger kvar på den skrivskyddade prissidan. Det gör att familjen kan jämföra vilka `50 %`-kvartar som skulle ha valts utan att säsongspausen påverkar någon last. Referensmodellen tillåter även andra eller inga pausmånader, men panelens nuvarande familjeinställning är det enkla valet juni–september på eller av.
 
 ## Säkerhets- och prioritetsordning
 
@@ -44,7 +43,7 @@ Elpatronen ska fortsätta reduceras i kompletta, balanserade trefassteg. En ensa
 
 ## Dygn, rangordning och sommartid
 
-Priserna grupperas efter lokal kalenderdag i `Europe/Stockholm`, men varje kvart identifieras med sin unika UTC-starttid. Ett normalt dygn har 96 kvartar. Dygnet då sommartid börjar har 92, och dygnet då normaltid återkommer har 100. Kvoterna 5 `Av` och 10 `Halv` behålls; antalet `Full` blir alltså 81, 77 respektive 85.
+Priserna grupperas efter lokal kalenderdag i `Europe/Stockholm`, men varje kvart identifieras med sin unika UTC-starttid. Ett normalt dygn har 96 kvartar. Dygnet då sommartid börjar har 92, och dygnet då normaltid återkommer har 100. Kvoten 15 `Halv` behålls; med v1-standardens 0 `Av` blir antalet `Full` alltså 81, 77 respektive 85.
 
 Rangordningen använder `total` från Tibber, dyrast först. Negativa priser är giltiga. Vid exakt lika pris avgör tidigare UTC-start, så resultatet är deterministiskt och oberoende av ordningen i API-svaret.
 
@@ -78,9 +77,9 @@ Källor: [Tibbers GraphQL-schema](https://developer.tibber.com/api/reference.md)
 ## Prisbild, RAM-bok och tidsbegränsade beslut
 
 - Shadow-implementationen behåller validerade planer för i dag och i morgon endast i RAM/PSRAM. En omstart kräver en ny hämtning; ingen prisplan skrivs till NVS eller flash.
-- Panelsidan öppnas genom ett tryck på **Tibber Live**-pillret. Den visar prislagrets hypotetiska högsta tillåtna effekt just nu och listar de kommande 24 timmarnas `0 %`- och `50 %`-kvartar med totalpris och rang inom respektive dygn.
+- Panelsidan öppnas genom ett tryck på **Tibber Live**-pillret. Den visar prislagrets hypotetiska högsta tillåtna effekt just nu och listar de kommande 24 timmarnas begränsade kvartar med totalpris och rang inom respektive dygn. Med v1-standard visas bara `50 %`; `0 %` kan visas endast om framtida simuleringskonfiguration uttryckligen aktiveras.
 - Om morgondagens priser ännu inte har publicerats visas bara den tillgängliga delen fram till midnatt med ett neutralt informationsmeddelande. Detta är normal partiell täckning, inte ett synkfel.
-- `0 %`, `50 %` och `Full` är högsta tillåtna nivå från just prislagret, inte ett löfte om att patronen kommer att gå. Termostat och överordnade skydd kan alltid begränsa mer.
+- `50 %` och `Full` är högsta tillåtna nivå från just prislagret, inte ett löfte om att patronen kommer att gå. Termostat och överordnade skydd kan alltid begränsa mer. Ett eventuellt simulerat `0 %` är inte en tillåten fysisk v1-order.
 - Den aktiva kvarten är ett halvöppet intervall `[start, slut)`, så exakt kvartsskifte väljer den nya kvarten utan glapp.
 - En begränsning översätts till en kort monoton lease, normalt högst 60 sekunder och aldrig längre än den aktuella kvartens ursprungliga sluttid. Ett fungerande kontrollflöde förnyar den medan samma begränsning gäller.
 - Ett nät- eller API-fel får inte förlänga leasen.
@@ -91,7 +90,7 @@ Referens-API:t har en uttrycklig `time_trusted`-grind. `app_time` behöver före
 
 ## Reläsekvensering och återkoppling
 
-Den rena pris- och lastreferensen kan logiskt begära 0, 1 eller 2 blockerade steg direkt. `tools/stage_output_sequencer.py` översätter detta till högst ett idempotent semantiskt kommando åt gången: `BLOCK_RE1`, `BLOCK_RE2`, `PERMIT_RE2` eller `PERMIT_RE1`. Den väntar på smartmodulens återläsning, sätttid och minsta ändringsintervall innan nästa steg. Därmed blir ordningen alltid `0→1→2` respektive `2→1→0`; rå `relay on/off` och `toggle` förekommer inte i beslutsmodellen.
+Den gemensamma lastreferensen kan fortfarande modellera 0, 1 eller 2 blockerade steg för framtida fas- och kontaktorarbete, och `tools/stage_output_sequencer.py` kan prova säker ordning utan hårdvara. **Prislagret i v1 begär däremot bara 0 eller 1 blockerat steg.** Det får aldrig begära huvudströmsbrytning eller ett andra steg. En framtida fysisk prisadapter ska använda ett verifierat semantiskt kommando för `F–K`/halvbegränsning, inte rå `relay on/off` eller `toggle`.
 
 Efter omstart måste verkligt kontaktorläge vara känt innan smartstyrningen tillåts återlämna ett steg. Benedict-kontaktorernas hjälpkontakter kan eventuellt ge återkoppling, men detta avgörs av elektrikern. Elektrisk invertering och om en kontakt betyder ”blockera” eller ”tillåt” ska endast finnas i utgångsdrivaren, aldrig i pris- eller faspolicyn.
 
@@ -99,32 +98,31 @@ En programvarulease räcker inte om den valda DIN-modulen kan lämna ett relä i
 
 ## Redan testat utan hårdvara
 
-- exakt 5/10/rest-rangordning på ett 96-kvartdygn;
+- exakt 0/15/rest-rangordning på ett 96-kvartdygn;
 - 92 och 100 verkliga kvartar vid båda tidsomställningarna;
 - lika och negativa priser samt blandad indataordning;
 - avvisning av luckor, dubbletter, icke ändliga värden och fel tider;
 - transparent läge vid saknad plan, BYPASS eller uttryckligen opålitlig tid;
 - standardpaus juni–september, valfri avstängning av pausen och fortsatt synlig råplan;
 - exakt byte vid kvartgränsen och lease endast till kvartsslutet;
-- samspel där pris kan blockera ett steg men fasöverlast kan öka till två;
+- samspel där pris endast kan blockera ett steg medan den separata fasreferensen fortfarande kan modellera strängare begränsning;
 - att utgången prislease inte tvingar fram återinkoppling utan strömutrymme.
 - fail-transparent återgång till enbart COALA när både prisleasen och färsk fasdata saknas;
 - kontaktorordning, återläsningskvittens, minsta intervall, timeout/felläge, okänt startläge och BYPASS i den hårdvaruneutrala utgångssekvenseraren.
 
-Den samlade datorbaserade sviten omfattar nu **65 tester**, inklusive de nya säsongsfallen.
+Den samlade datorbaserade sviten omfattar nu **66 tester**, inklusive v1-standardens 0/15-fördelning och de nya säsongsfallen.
 
 Firmwaremodulen `main/tibber_price_source.c` är en medvetet begränsad shadow-implementation. Den kräver sparat Tibber-hem och NTP-synkroniserad tid, frågar efter `today` och `tomorrow`, kontrollerar GraphQL-fel, valuta och varje helt sammanhängande dygn med 92/96/100 kvartar och publicerar en atomisk, läsbar prisbok i RAM/PSRAM. Misslyckade hämtningar återprovas med jitter och exponentiell väntan upp till en timme utan att en fortfarande giltig bok behöver kastas. Större data läggs i PSRAM men själva task-stacken ligger i internminne eftersom tasken läser NVS-konfiguration. Modulen är avstängd i normal konfiguration, sparar ingen plan beständigt och kan inte påverka någon utgång.
 
-Den skrivskyddade sidan i `main/ui.c` visar aktuell hypotetisk prisgräns och paginerar endast de kvartar inom de kommande 24 timmarna som råplanen sätter till `0 %` eller `50 %`. Under säsongspausen markeras beslutet som sommarpaus samtidigt som råplanen fortsätter synas. Hela prisvägens berörda C-enheter har kompilerats separat med shadow-flaggan på, och den villkorsstyrda UI-koden har även verifierats med flaggan av. Full arkivering och länkning på arbetsdatorn stoppas fortfarande av Windows App Control i verktygskedjans arkiverare med felkod 4551. Den nya prisvyn har därför inte flashats eller fältprovats på panelen.
+Den skrivskyddade sidan i `main/ui.c` visar aktuell hypotetisk prisgräns och paginerar endast de begränsade kvartarna inom de kommande 24 timmarna. Standardplanen innehåller 15 `50 %`-kvartar och inga `0 %`-kvartar. Under säsongspausen markeras beslutet som sommarpaus samtidigt som råplanen fortsätter synas. Efter v1-omläggningen kompilerade prisvägens berörda C-enheter separat med shadow-flaggan på och den lokala 0/15-konfigurationen; den villkorsstyrda UI-koden hade tidigare även verifierats med flaggan av. Full arkivering och länkning på arbetsdatorn stoppas fortfarande av Windows App Control i verktygskedjans arkiverare med felkod 4551. Den nya prisvyn och v1-regeln har inte flashats eller fältprovats på panelen.
 
 ## Återstående arbetsordning
 
 1. Fullbygg, flasha och observera shadow-läget under flera dygn utan någon fysisk utgång. Kontrollera särskilt dygnsskifte, sen publicering av morgondagen och sommarpausens råplan.
 2. Avgör efter fältprovet om en beständig pris-cache verkligen behövs; nuvarande prisbok är avsiktligt RAM-baserad och hämtas på nytt efter omstart.
-3. Identifiera de två verkliga effektstegen, `F–K`, kontaktorordning och hjälpkontakter tillsammans med elektrikern.
-4. Bestäm komfortgräns, maximal sammanhängande prisblockering och om första fysiska versionen endast får använda `Halv`.
-5. Implementera och testa kontaktorsekvensering samt fysisk SMART/BYPASS.
-6. Kör ett kontrollerat fältprov innan prisstyrningen får påverka patronen.
+3. Låt elektrikern verifiera `F–K`, inklusive att patronen kan hållas spänningssatt och växla mellan normalt och högst halv effekt utan oönskad samverkan med tvåtimmarsspärren.
+4. Rita och godkänn en fail-transparent fysisk adapter och SMART/BYPASS för just halvbegränsningen. Prislagret ska inte få en fysisk totalstoppsutgång i v1.
+5. Kör ett kontrollerat fältprov med mätning av ström per fas innan prisstyrningen får påverka patronen.
 
 ## Utrymme på panelen
 

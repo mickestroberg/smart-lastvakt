@@ -55,21 +55,31 @@ menu "Example Configuration"
                 Downloads and ranks today's and, when published, tomorrow's
                 quarter-hourly Tibber total prices in RAM. A read-only page shows
                 the current hypothetical price limit and the coming 24 hours'
-                half- and full-block quarters. The source has no connection to
-                any physical output. Requires a previously saved explicit Tibber
-                home ID and an NTP-synchronized clock. No schedule is persisted.
+                half-limit quarters. Fully blocked quarters remain an optional
+                simulation setting and default to zero. The source has no
+                connection to any physical output. Requires a previously saved
+                explicit Tibber home ID and an NTP-synchronized clock. No schedule
+                is persisted.
 
         config LASTVAKT_TIBBER_PRICE_SHADOW_OFF_QUARTERS
-            int "Shadow: number of highest-price quarters marked fully blocked"
+            int "Shadow only: highest-price quarters marked fully blocked"
             depends on LASTVAKT_TIBBER_PRICE_SHADOW
-            default 5
+            default 0
             range 0 100
+            help
+                Future simulation option only. Safe version 1 uses zero because
+                price control must not remove all heater power or cycle its main
+                supply. There is no physical output from this shadow source.
 
         config LASTVAKT_TIBBER_PRICE_SHADOW_HALF_QUARTERS
-            int "Shadow: following quarters marked half limited"
+            int "Shadow: highest remaining quarters marked half limited"
             depends on LASTVAKT_TIBBER_PRICE_SHADOW
-            default 10
+            default 15
             range 0 100
+            help
+                Safe version 1 marks the day's 15 most expensive quarters as
+                limited to at most half power. All other quarters have no price
+                restriction. This remains read-only shadow behavior.
 
     endmenu
 

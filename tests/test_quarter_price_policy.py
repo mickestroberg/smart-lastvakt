@@ -28,15 +28,19 @@ def prices_for_day(day: date) -> list[QuarterPrice]:
 
 
 class QuarterPricePolicyTests(unittest.TestCase):
-    def test_normal_day_has_exact_five_off_and_ten_half_quarters(self) -> None:
+    def test_v1_defaults_have_no_off_and_exactly_fifteen_half_quarters(self) -> None:
+        config = PricePolicyConfig()
         schedule = build_price_schedule(date(2026, 10, 23), prices_for_day(date(2026, 10, 23)))
 
+        self.assertEqual(0, config.off_quarters)
+        self.assertEqual(15, config.half_quarters)
+        self.assertEqual((6, 7, 8, 9), config.inactive_months)
         self.assertEqual(96, len(schedule.slots))
-        self.assertEqual(5, sum(slot.tier is PriceTier.OFF for slot in schedule.slots))
-        self.assertEqual(10, sum(slot.tier is PriceTier.HALF for slot in schedule.slots))
+        self.assertEqual(0, sum(slot.tier is PriceTier.OFF for slot in schedule.slots))
+        self.assertEqual(15, sum(slot.tier is PriceTier.HALF for slot in schedule.slots))
         self.assertEqual(81, sum(slot.tier is PriceTier.FULL for slot in schedule.slots))
-        highest = sorted(schedule.slots, key=lambda slot: slot.total, reverse=True)[:5]
-        self.assertTrue(all(slot.tier is PriceTier.OFF for slot in highest))
+        highest = sorted(schedule.slots, key=lambda slot: slot.total, reverse=True)[:15]
+        self.assertTrue(all(slot.tier is PriceTier.HALF for slot in highest))
 
     def test_default_summer_pause_is_transparent_at_month_boundaries(self) -> None:
         cases = (
@@ -49,18 +53,19 @@ class QuarterPricePolicyTests(unittest.TestCase):
         for day, expected_state in cases:
             with self.subTest(day=day):
                 schedule = build_price_schedule(day, prices_for_day(day))
-                off_slot = next(
-                    slot for slot in schedule.slots if slot.tier is PriceTier.OFF
+                half_slot = next(
+                    slot for slot in schedule.slots if slot.tier is PriceTier.HALF
                 )
-                decision = decide_price_limit(schedule, off_slot.starts_at)
+                decision = decide_price_limit(schedule, half_slot.starts_at)
 
                 self.assertEqual(expected_state, decision.data_state)
                 if expected_state is PriceDataState.SEASONAL_PAUSE:
                     self.assertEqual(PriceTier.FULL, decision.tier)
                     self.assertEqual(0, decision.minimum_blocked_stages)
+                    self.assertEqual(PriceTier.HALF, decision.scheduled_tier)
                 else:
-                    self.assertEqual(PriceTier.OFF, decision.tier)
-                    self.assertEqual(2, decision.minimum_blocked_stages)
+                    self.assertEqual(PriceTier.HALF, decision.tier)
+                    self.assertEqual(1, decision.minimum_blocked_stages)
 
     def test_all_default_inactive_months_are_paused(self) -> None:
         for month in (6, 7, 8, 9):
@@ -75,22 +80,33 @@ class QuarterPricePolicyTests(unittest.TestCase):
     def test_summer_schedule_remains_ranked_and_visible_while_control_is_paused(self) -> None:
         day = date(2026, 7, 15)
         schedule = build_price_schedule(day, prices_for_day(day))
-        off_slot = next(slot for slot in schedule.slots if slot.tier is PriceTier.OFF)
-        decision = decide_price_limit(schedule, off_slot.starts_at)
+        half_slot = next(slot for slot in schedule.slots if slot.tier is PriceTier.HALF)
+        decision = decide_price_limit(schedule, half_slot.starts_at)
 
-        self.assertEqual(5, sum(slot.tier is PriceTier.OFF for slot in schedule.slots))
-        self.assertEqual(10, sum(slot.tier is PriceTier.HALF for slot in schedule.slots))
+        self.assertEqual(0, sum(slot.tier is PriceTier.OFF for slot in schedule.slots))
+        self.assertEqual(15, sum(slot.tier is PriceTier.HALF for slot in schedule.slots))
         self.assertEqual(PriceDataState.SEASONAL_PAUSE, decision.data_state)
         self.assertEqual(PriceTier.FULL, decision.tier)
-        self.assertEqual(PriceTier.OFF, decision.scheduled_tier)
-        self.assertEqual(off_slot.total, decision.current_price_total)
-        self.assertEqual(off_slot.rank, decision.rank)
+        self.assertEqual(PriceTier.HALF, decision.scheduled_tier)
+        self.assertEqual(half_slot.total, decision.current_price_total)
+        self.assertEqual(half_slot.rank, decision.rank)
         self.assertEqual(schedule.currency, decision.currency)
         self.assertIsNone(decision.valid_until)
         self.assertEqual(
             0,
-            to_external_block(decision, off_slot.starts_at, 100.0).active_count(100.0),
+            to_external_block(decision, half_slot.starts_at, 100.0).active_count(100.0),
         )
+
+    def test_off_quarters_remain_available_for_future_shadow_simulation(self) -> None:
+        day = date(2026, 10, 23)
+        config = PricePolicyConfig(off_quarters=5, half_quarters=10)
+        schedule = build_price_schedule(day, prices_for_day(day), config)
+
+        self.assertEqual(5, sum(slot.tier is PriceTier.OFF for slot in schedule.slots))
+        self.assertEqual(10, sum(slot.tier is PriceTier.HALF for slot in schedule.slots))
+        self.assertEqual(81, sum(slot.tier is PriceTier.FULL for slot in schedule.slots))
+        highest = sorted(schedule.slots, key=lambda slot: slot.total, reverse=True)[:5]
+        self.assertTrue(all(slot.tier is PriceTier.OFF for slot in highest))
 
     def test_seasonal_pause_months_are_configurable_or_can_be_disabled(self) -> None:
         june = date(2026, 6, 15)
@@ -144,8 +160,8 @@ class QuarterPricePolicyTests(unittest.TestCase):
         schedule = build_price_schedule(day, reversed(entries))
 
         self.assertEqual(list(range(1, 97)), [slot.rank for slot in schedule.slots])
-        self.assertTrue(all(slot.tier is PriceTier.OFF for slot in schedule.slots[:5]))
-        self.assertTrue(all(slot.tier is PriceTier.HALF for slot in schedule.slots[5:15]))
+        self.assertTrue(all(slot.tier is PriceTier.HALF for slot in schedule.slots[:15]))
+        self.assertTrue(all(slot.tier is PriceTier.FULL for slot in schedule.slots[15:]))
 
     def test_negative_prices_are_ranked_numerically(self) -> None:
         day = date(2026, 10, 23)
@@ -155,7 +171,7 @@ class QuarterPricePolicyTests(unittest.TestCase):
         ]
         schedule = build_price_schedule(day, entries)
 
-        self.assertEqual(PriceTier.OFF, schedule.slots[-1].tier)
+        self.assertEqual(PriceTier.HALF, schedule.slots[-1].tier)
         self.assertEqual(1, schedule.slots[-1].rank)
         self.assertEqual(PriceTier.FULL, schedule.slots[0].tier)
 
@@ -166,8 +182,8 @@ class QuarterPricePolicyTests(unittest.TestCase):
 
         self.assertEqual(92, len(schedule.slots))
         self.assertFalse(any(value.hour == 2 for value in local_starts))
-        self.assertEqual(5, sum(slot.tier is PriceTier.OFF for slot in schedule.slots))
-        self.assertEqual(10, sum(slot.tier is PriceTier.HALF for slot in schedule.slots))
+        self.assertEqual(0, sum(slot.tier is PriceTier.OFF for slot in schedule.slots))
+        self.assertEqual(15, sum(slot.tier is PriceTier.HALF for slot in schedule.slots))
 
     def test_fall_dst_day_has_100_real_quarters_and_both_offsets(self) -> None:
         day = date(2026, 10, 25)
@@ -180,8 +196,8 @@ class QuarterPricePolicyTests(unittest.TestCase):
 
         self.assertEqual(100, len(schedule.slots))
         self.assertEqual({timedelta(hours=1), timedelta(hours=2)}, two_oclock_offsets)
-        self.assertEqual(5, sum(slot.tier is PriceTier.OFF for slot in schedule.slots))
-        self.assertEqual(10, sum(slot.tier is PriceTier.HALF for slot in schedule.slots))
+        self.assertEqual(0, sum(slot.tier is PriceTier.OFF for slot in schedule.slots))
+        self.assertEqual(15, sum(slot.tier is PriceTier.HALF for slot in schedule.slots))
 
     def test_incomplete_duplicate_or_non_contiguous_day_is_rejected(self) -> None:
         day = date(2026, 10, 23)
@@ -287,7 +303,9 @@ class QuarterPricePolicyTests(unittest.TestCase):
     def test_external_block_expires_at_original_quarter_end(self) -> None:
         day = date(2026, 10, 23)
         entries = [QuarterPrice(start, 0.0) for start in expected_quarter_starts(day)]
-        schedule = build_price_schedule(day, entries)
+        schedule = build_price_schedule(
+            day, entries, PricePolicyConfig(off_quarters=1, half_quarters=14)
+        )
         decision = decide_price_limit(schedule, schedule.slots[0].starts_at + timedelta(minutes=4))
         block = to_external_block(
             decision,
@@ -303,7 +321,9 @@ class QuarterPricePolicyTests(unittest.TestCase):
     def test_external_block_is_shorter_when_quarter_ends_soon(self) -> None:
         day = date(2026, 10, 23)
         entries = [QuarterPrice(start, 0.0) for start in expected_quarter_starts(day)]
-        schedule = build_price_schedule(day, entries)
+        schedule = build_price_schedule(
+            day, entries, PricePolicyConfig(off_quarters=1, half_quarters=14)
+        )
         now = schedule.slots[0].ends_at - timedelta(seconds=3)
         block = to_external_block(decide_price_limit(schedule, now), now, 50.0)
 
@@ -327,7 +347,9 @@ class QuarterPricePolicyTests(unittest.TestCase):
     def test_price_expiry_with_live_data_never_forces_restore_without_headroom(self) -> None:
         day = date(2026, 10, 23)
         entries = [QuarterPrice(start, 0.0) for start in expected_quarter_starts(day)]
-        schedule = build_price_schedule(day, entries)
+        schedule = build_price_schedule(
+            day, entries, PricePolicyConfig(off_quarters=5, half_quarters=10)
+        )
         off_slot = next(slot for slot in schedule.slots if slot.tier is PriceTier.OFF)
         now = off_slot.starts_at + timedelta(minutes=14, seconds=59)
         block = to_external_block(decide_price_limit(schedule, now), now, 0.0)
@@ -344,7 +366,9 @@ class QuarterPricePolicyTests(unittest.TestCase):
     def test_expired_price_lease_with_stale_phase_data_returns_to_coala_only(self) -> None:
         day = date(2026, 10, 23)
         entries = [QuarterPrice(start, 0.0) for start in expected_quarter_starts(day)]
-        schedule = build_price_schedule(day, entries)
+        schedule = build_price_schedule(
+            day, entries, PricePolicyConfig(off_quarters=5, half_quarters=10)
+        )
         off_slot = next(slot for slot in schedule.slots if slot.tier is PriceTier.OFF)
         now = off_slot.starts_at + timedelta(minutes=14, seconds=59)
         block = to_external_block(decide_price_limit(schedule, now), now, 0.0)

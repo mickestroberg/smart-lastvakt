@@ -1278,7 +1278,7 @@ static void create_price_view(lv_obj_t *root)
     s_ui.price_empty = make_label(s_ui.price_view, &lv_font_lastvakt_16, COLOR_MUTED);
     lv_obj_set_width(s_ui.price_empty, 680);
     lv_obj_set_style_text_align(s_ui.price_empty, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_label_set_text(s_ui.price_empty, "Inga 0- eller 50-procentskvartar i den tillgängliga planen.");
+    lv_label_set_text(s_ui.price_empty, "Inga planerade prisbegränsningar i den tillgängliga planen.");
     lv_obj_align(s_ui.price_empty, LV_ALIGN_CENTER, 0, 54);
 
     s_ui.price_previous_button = make_button(s_ui.price_view, "Föregående", price_previous_event);
@@ -2107,9 +2107,13 @@ static void update_price_view(bool force)
     }
 
     size_t restricted_count = 0;
+    size_t summer_paused_count = 0;
     for (size_t i = 0; i < slot_count; ++i) {
         if (s_ui.price_slots[i].suggested_tier != TIBBER_PRICE_SHADOW_NO_LIMIT) {
             ++restricted_count;
+            if (price_summer_pause_active(s_ui.price_slots[i].starts_at)) {
+                ++summer_paused_count;
+            }
         }
     }
     const size_t page_count =
@@ -2124,14 +2128,15 @@ static void update_price_view(bool force)
         snprintf(
             horizon,
             sizeof(horizon),
-            "%u valda 0/50-kvartar kommande 24 timmar%s%s",
+            "%u planerade prisbegränsningar kommande 24 timmar%s%s%s",
             (unsigned)restricted_count,
             full_horizon ? " • komplett 24-timmarsvy" : " • delvis täckning",
             full_horizon
                 ? ""
                 : (metadata.tomorrow_available
                        ? "; prisdata täcker ännu inte hela perioden"
-                       : "; morgondagens priser är ännu inte publicerade"));
+                       : "; morgondagens priser är ännu inte publicerade"),
+            summer_paused_count > 0 ? " • sommarpausade tider visas som råplan" : "");
     } else {
         snprintf(horizon, sizeof(horizon), "%s", tibber_price_source_status_text());
     }
@@ -2145,7 +2150,7 @@ static void update_price_view(bool force)
         lv_label_set_text(
             s_ui.price_empty,
             metadata.available
-                ? "Inga 0- eller 50-procentskvartar i den tillgängliga delen av planen."
+                ? "Inga planerade prisbegränsningar i den tillgängliga delen av planen."
                 : "Prisplanen visas här när Tibber-priser och tillförlitlig tid finns.");
         lv_obj_clear_flag(s_ui.price_empty, LV_OBJ_FLAG_HIDDEN);
         return;
@@ -2173,12 +2178,13 @@ static void update_price_view(bool force)
             (unsigned)slot->day_rank,
             (unsigned)slot->day_slot_count);
         lv_label_set_text(s_ui.price_row_time[row_index], interval);
+        const bool raw_plan = price_summer_pause_active(slot->starts_at);
         lv_label_set_text(
             s_ui.price_row_limit[row_index],
-            price_tier_text(slot->suggested_tier, price_summer_pause_active(slot->starts_at)));
+            price_tier_text(slot->suggested_tier, raw_plan));
         lv_obj_set_style_text_color(
             s_ui.price_row_limit[row_index],
-            lv_color_hex(price_tier_color(slot->suggested_tier)),
+            lv_color_hex(raw_plan ? COLOR_CYAN : price_tier_color(slot->suggested_tier)),
             LV_PART_MAIN);
         lv_label_set_text(s_ui.price_row_value[row_index], value);
         lv_obj_clear_flag(s_ui.price_row[row_index], LV_OBJ_FLAG_HIDDEN);

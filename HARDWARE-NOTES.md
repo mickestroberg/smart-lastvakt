@@ -149,9 +149,9 @@ PF-variantens dedikerade effektvaktsingång kan påverka den slutliga konstrukti
 
 ### Föreslagen princip
 
-COALA behålls som fristående lokal effektvakt. En smart tvåkanalig DIN-modul läggs i serie med COALAs två styrutgångar och kan endast blockera eller tillåta kontaktorspolarna. Elpatronens trefaslast ska inte ledas genom smartmodulen, och smartmodulen får aldrig kunna kringgå pannans termostat, överhettningsskydd eller annan säkerhetskedja.
+COALA behålls som fristående lokal effektvakt. För **prisstyrningens säkra v1** ska elpatronens huvudmatning ligga kvar under prissvängningarna. Dygnets 15 dyraste kvartar får bara begära högst halv effekt; resterande kvartar innebär ingen prisbegränsning. Prislagret ska inte kunna ge ett totalstopp eller spänningscykla patronen.
 
-Principen är preliminär tills patronens befintliga styrkrets har verifierats. Eftersom modellen nu är bekräftad som PF 9 kW kan dess avsedda effektvaktsingång vara lämpligare för en del av styrningen än extern brytning av huvudströmmen.
+Releks avsedda effektvaktsingång `F–K` är därför förstahandskandidat för prisets halvbegränsning, men principen är preliminär tills elektrikern har verifierat den verkliga styrkretsen. Provet ska bekräfta både att begränsningen verkligen ger högst halv effekt och att frigivning återgår till normal tillgänglig effekt utan att tvåtimmarsspärren oavsiktligt startas om. En eventuell smartmodul ska vara potentialfri och fail-transparent enligt elektrikerns schema och får aldrig kunna kringgå pannans termostat, överhettningsskydd, COALA eller annan säkerhetskedja.
 
 Det ger följande ansvarsfördelning:
 
@@ -175,7 +175,7 @@ Om smartmodulens kontakt skulle fastna sluten ska COALA fortfarande kunna koppla
 
 Tibberdata som är för gammal eller saknas får aldrig ersättas med simulerade värden i relälogiken. Simulering är endast tillåten i displayvyn. Beteendet vid förlorad Tibberdata, strömavbrott och omstart ska fastställas tillsammans med elektrikern innan inkoppling.
 
-Eftersom COALA nu är verifierad som självständig tvåstegsvakt är den föredragna programvarustrategin vid förlorad Tibberdata att smartmodulen blir transparent och tillåter båda stegen, så att COALA ensam tar över regleringen. Ett smart pris- eller Tibberbaserat stopp bör därför utformas som en tidsbegränsad blockering som måste förnyas; om styrningen försvinner ska blockeringen löpa ut. Strömavbrott i själva smartmodulen kräver fortfarande en definierad reservlösning, exempelvis SMART/BYPASS.
+Eftersom COALA nu är verifierad som självständig tvåstegsvakt är den föredragna programvarustrategin vid förlorad Tibberdata att smartmodulen blir transparent, så att COALA ensam tar över regleringen. Prisets halvbegränsning ska därför utformas som en tidsbegränsad begäran som måste förnyas; om styrningen försvinner ska den löpa ut utan att patronens huvudmatning bryts. Strömavbrott i själva smartmodulen kräver fortfarande en definierad reservlösning, exempelvis SMART/BYPASS.
 
 ### Kandidat för smartmodul
 
@@ -206,10 +206,11 @@ Produktinformation: [Shelly Pro 2](https://www.shelly.com/products/shelly-pro-2)
 - Låt fasgränser alltid ha företräde framför prisoptimering.
 - Tillåt aldrig att smartstyrningen tvingar igång värme; den får endast begränsa tillåtna effektsteg.
 - Låt en smart blockering löpa ut automatiskt om den inte förnyas, så att anläggningen återgår till COALA-drift vid kommunikationsfel.
-- Låt prislagret endast begära ett tidsbegränsat minimum på 0, 1 eller 2 blockerade steg. Billigt pris betyder ingen prisbegränsning och får aldrig översättas till ett startkommando.
-- Sekvensera verkliga kontaktorändringar ett steg i taget med minsta ändringsintervall även om pris- eller faspolicyn logiskt hoppar direkt mellan 0 och 2.
+- Låt prislagret i v1 endast begära 0 eller 1 blockerat steg: ingen prisbegränsning eller högst halv effekt. Billigt pris betyder ingen prisbegränsning och får aldrig översättas till ett startkommando.
+- Låt aldrig prislagret i v1 spänningscykla patronen eller ge ett totalt effektstopp. `0 %` får endast finnas som framtida simuleringsval med standardantalet 0.
+- Sekvensera framtida verkliga kontaktorändringar ett steg i taget med minsta ändringsintervall när faspolicyn eller annan separat skyddslogik kräver flera steg.
 - Kräv känt eller återkopplat kontaktorläge efter omstart innan smartstyrningen återlämnar effekt.
-- Kör först prishämtning och beslut i shadow mode, avstängt från utgångarna. Full prisavstängning bör inte aktiveras innan komfortgräns eller maximal sammanhängande blocktid har beslutats.
+- Kör först prishämtning och beslut i shadow mode, avstängt från utgångarna. Säker v1 använder aldrig full prisavstängning; en sådan möjlighet hör endast till framtida simulering och ett nytt uttryckligt säkerhetsbeslut.
 - Logga mätvärde, datans ålder, beslut, kontaktororder och eventuell lägesåterkoppling.
 
-Tibber anger att realtidsdata kan fördröjas eller grupperas och att enskilda fält kan saknas. Prisarkitekturen och standardförslaget 5 `Av` + 10 `Halv` dokumenteras i [PRICE-CONTROL-POLICY.md](PRICE-CONTROL-POLICY.md). Se även [Tibbers API-referens](https://developer.tibber.com/api/reference.md).
+Tibber anger att realtidsdata kan fördröjas eller grupperas och att enskilda fält kan saknas. Prisarkitekturen och v1-standarden 0 `Av` + 15 `Halv` dokumenteras i [PRICE-CONTROL-POLICY.md](PRICE-CONTROL-POLICY.md). Se även [Tibbers API-referens](https://developer.tibber.com/api/reference.md).
