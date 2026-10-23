@@ -43,7 +43,7 @@ En frikopplad, datorbaserad referensmodell för framtida tvåstegsstyrning finns
 - En enkel gemensam inköpslista med möjlighet att lägga till exempelvis ”mjölk” från mobil eller display.
 - Separata Shelly-pluggar till diskmaskin, tvättmaskin och torktumlare. En framtida funktion kan tolka varje maskins effektprofil som **viloläge → körning → varaktigt låg effekt → klar** och därefter skicka en notis. Push- eller SMS-tjänst är ännu inte vald. Övervakningen ska inte kunna fjärrstarta någon maskin automatiskt.
 - Fortsatt bedömning av Shelly-pluggens lämplighet för mikron och apparatmanualens begränsning av extern styrning.
-- Pris- och fasstyrd begränsning av elpatronens två effektsteg som ett smart tillägg i serie med den separata COALA-vakten. Verifierade apparatuppgifter och öppna konstruktionsfrågor finns i [HARDWARE-NOTES.md](HARDWARE-NOTES.md).
+- Pris- och fasstyrd begränsning av elpatronens två effektsteg som ett smart tillägg i serie med den separata COALA-vakten. Den hårdvarufria kvartprispolicyn, den standardmässigt avstängda och icke-aktuerande Tibber-shadow-källan samt införandeplanen finns i [PRICE-CONTROL-POLICY.md](PRICE-CONTROL-POLICY.md); verifierade apparatuppgifter och öppna konstruktionsfrågor finns i [HARDWARE-NOTES.md](HARDWARE-NOTES.md).
 
 Kalendern läses skrivskyddat via Googles hemliga iCal-adress. Adressen lagras endast på enheten, aldrig i Git-förrådet eller i loggarna.
 
@@ -77,7 +77,7 @@ idf.py build
 
 ## Testa styrprincipen utan hårdvara
 
-Referensmodellerna använder endast Pythons standardbibliotek. Testsviten omfattar den framtida tvåstegsstyrningen för elpatronen, mikrons ensidiga 20 A-skydd och matlagningstimrarnas tillstånd och monotona nedräkning:
+Referensmodellerna använder endast Pythons standardbibliotek. Testsviten omfattar den framtida tvåstegsstyrningen för elpatronen, säker kontaktorsekvensering, 15-minutersprisernas 92/96/100-kvartdygn och tidsbegränsade blockeringar, mikrons ensidiga 20 A-skydd samt matlagningstimrarnas tillstånd och monotona nedräkning:
 
 ```powershell
 python -m unittest discover -s tests -v
@@ -109,7 +109,8 @@ De tre färdiga bilderna ligger även i `firmware/` och har följande offset:
 - hur länge fasvyn ligger kvar efter varningen, standard 8 sekunder;
 - mikrons automatiska L1-frånkopplingsgräns, standard 20 A;
 - Shellyeffekt som räknas som aktiv mikro, standard 500 W;
-- högsta tillåtna ålder på Tibbervärdet för reläbeslut, standard 5 sekunder.
+- högsta tillåtna ålder på Tibbervärdet för reläbeslut, standard 5 sekunder;
+- ett standardmässigt avstängt, skrivskyddat Tibber-kvartspris-shadow med 5 `Av`- och 10 `Halv`-kvartar. Det har ingen koppling till någon fysisk utgång.
 
 ## Struktur
 
@@ -120,6 +121,7 @@ De tre färdiga bilderna ligger även i `firmware/` och har följande offset:
 - `main/shelly_client.c` – hämtar reläläge och elmätvärden och verkställer bekräftade reläkommandon i bakgrunden på det lokala nätverket.
 - `main/microwave_guard.c` – övervakar färsk L1-data och kan endast begära automatisk frånkoppling av mikron; den begär aldrig tillkoppling.
 - `main/tibber_client.c` – Tibbers GraphQL- och WebSocket-klient med sessionsbunden fasdata, watchdog och kontrollerad återanslutning.
+- `main/tibber_price_source.c` – valfri, icke-aktuerande HTTP-källa för dagens kompletta kvartpriser i shadow mode.
 - `main/phase_source.c` – skiljer färska, partiella, senast kända och otillgängliga verkliga fasvärden åt.
 - `main/app_time.c` – RTC, NTP och svensk tidszon.
 - `main/ui.c` – LVGL-gränssnittet och vyväxlingen.

@@ -60,6 +60,14 @@ Kalenderns avslappnade cachebeteende byggdes och flashades 2026-10-17. Startlogg
 
 Senare 2026-10-17 fältprovades funktionen under verklig hushållslast. Elpatronen var igång, ugnen belastade L1 och mikron användes för att smälta smör. Mikron blev automatiskt strömlös efter ungefär 30 sekunder. En familjemedlem hittade därefter reläsidan och lyckades med den manuella återinkopplingen utan instruktioner. Det verifierar det avsedda användarbeteendet från automatisk brytning till mänskligt kvitterad återinkoppling. Ingen logg eller tidsserie fångades under provet, så cirka 30 sekunder ska inte tolkas som vaktens reaktionstid från att L1 passerade 20 A.
 
+## Offlineförberedelse för kvartspris – 2026-10-23
+
+Ingen panel var ansluten och ingen flashning gjordes. Den frikopplade kvartspolicyn och den hårdvaruneutrala tvåstegssekvenseraren verifierades tillsammans med övriga skrivbordsmodeller: **61 av 61 tester passerade**. Testerna omfattar bland annat 92/96/100 verkliga kvartar vid svensk sommartid, rangordning 5 `Av` + 10 `Halv`, felaktiga eller ofullständiga prisdygn, korta blockeringsleaser, prioritet för faslast samt kontaktorordning och förlorad återläsning.
+
+En första Tibber-priskälla lades till bakom byggflaggan `CONFIG_LASTVAKT_TIBBER_PRICE_SHADOW`, som är avstängd som standard. Den hämtar endast dagens kvartpriser, kräver ett uttryckligt sparat Tibber-hem och NTP-synkroniserad tid, validerar GraphQL-svar, valuta och ett komplett sammanhängande dygn och publicerar bara en läsbar ögonblicksbild i RAM/PSRAM. Fel återprovas med jitter och exponentiell väntan upp till en timme. Modulen har inga anrop eller beroenden till Shelly, COALA, kontaktorer eller reläutgångar. Startfel loggas utan att stoppa panelens övriga funktioner.
+
+Med shadow-flaggan aktiverad kompilerade `main/tibber_price_source.c`, `main/app_time.c` och `main/main.c` utan varningar eller fel. Full arkivering och länkning kunde inte slutföras på arbetsdatorn eftersom Windows App Control blockerade ett barnprogram till `xtensa-esp32s3-elf-ar.exe` med felkod 4551. Detta var inte ett kompilatorfel, men en full ESP-IDF-byggning ska därför göras i den vanliga tillåtna byggmiljön innan shadow-läget flashas och fältprovas.
+
 ## Fabriksbackup
 
 Före flashningen lästes hela den ursprungliga 16 MB-flashen ut:

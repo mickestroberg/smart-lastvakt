@@ -206,6 +206,10 @@ Produktinformation: [Shelly Pro 2](https://www.shelly.com/products/shelly-pro-2)
 - Låt fasgränser alltid ha företräde framför prisoptimering.
 - Tillåt aldrig att smartstyrningen tvingar igång värme; den får endast begränsa tillåtna effektsteg.
 - Låt en smart blockering löpa ut automatiskt om den inte förnyas, så att anläggningen återgår till COALA-drift vid kommunikationsfel.
+- Låt prislagret endast begära ett tidsbegränsat minimum på 0, 1 eller 2 blockerade steg. Billigt pris betyder ingen prisbegränsning och får aldrig översättas till ett startkommando.
+- Sekvensera verkliga kontaktorändringar ett steg i taget med minsta ändringsintervall även om pris- eller faspolicyn logiskt hoppar direkt mellan 0 och 2.
+- Kräv känt eller återkopplat kontaktorläge efter omstart innan smartstyrningen återlämnar effekt.
+- Kör först prishämtning och beslut i shadow mode, avstängt från utgångarna. Full prisavstängning bör inte aktiveras innan komfortgräns eller maximal sammanhängande blocktid har beslutats.
 - Logga mätvärde, datans ålder, beslut, kontaktororder och eventuell lägesåterkoppling.
 
-Tibber anger att realtidsdata kan fördröjas eller grupperas och att enskilda fält kan saknas. Se [Tibbers API-referens](https://developer.tibber.com/api/reference.md).
+Tibber anger att realtidsdata kan fördröjas eller grupperas och att enskilda fält kan saknas. Prisarkitekturen och standardförslaget 5 `Av` + 10 `Halv` dokumenteras i [PRICE-CONTROL-POLICY.md](PRICE-CONTROL-POLICY.md). Se även [Tibbers API-referens](https://developer.tibber.com/api/reference.md).

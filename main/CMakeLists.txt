@@ -1,5 +1,4 @@
-idf_component_register(
-    SRCS
+set(lastvakt_sources
         "main.c"
         "app_config.c"
         "app_time.c"
@@ -18,7 +17,15 @@ idf_component_register(
         "fonts/lv_font_lastvakt_24.c"
         "fonts/lv_font_lastvakt_48.c"
         "fonts/lv_font_lastvakt_clock_96.c"
-        "../components/waveshare_rgb_lcd_port.c"
+        "../components/waveshare_rgb_lcd_port.c")
+
+if(CONFIG_LASTVAKT_TIBBER_PRICE_SHADOW)
+    list(APPEND lastvakt_sources "tibber_price_source.c")
+endif()
+
+idf_component_register(
+    SRCS
+        ${lastvakt_sources}
     INCLUDE_DIRS
         "."
         "fonts"

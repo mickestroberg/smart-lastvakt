@@ -13,6 +13,8 @@ Syftet är att låsa säkerhetsbeteendet innan kontaktorer, Relek-modell och ver
 
 Den externa begäran kan bara öka antalet blockerade steg. Den kan aldrig ge tillstånd att starta ett steg.
 
+Kvartsprisstyrningens separata referensmodell finns i `tools/quarter_price_policy.py`. Den klassar en komplett prisdag till 0, 1 eller 2 minsta blockerade steg och omvandlar bara den aktiva kvarten till en kort monoton lease. Se [PRICE-CONTROL-POLICY.md](PRICE-CONTROL-POLICY.md).
+
 ## Stegordning
 
 - Steg 1 motsvarar COALA `Re1`: kopplas bort först och återansluts sist.
@@ -32,6 +34,8 @@ Endast tillgängliga, icke-simulerade, ändliga och tillräckligt färska fasvä
 - Återinkopplingsvillkoret måste vara stabilt under en konfigurerad tid.
 - En minsta tid mellan ändringar förhindrar kontaktorpendling.
 
+Modellen beskriver önskat logiskt antal blockerade steg men har inga fysiska utgångar. `tools/stage_output_sequencer.py` är den separata, hårdvaruneutrala referensen som sekvenserar varje faktisk ändring ett steg i taget, väntar på återläsning och kräver ny initiering efter BYPASS. Ett direkt logiskt hopp mellan 0 och 2 blir därmed `Re1` och sedan `Re2`; återgången sker `Re2` och sedan `Re1`. Rå reläpolaritet och fysisk adapter väntar tills elektrikerns schema är klart.
+
 ## Viktigt om exempelvärdena
 
 Funktionen `pf_candidate_example_config()` använder 23 A som illustrativ gräns och 6,5 A per steg. Typskylten bekräftar nu att patronen är Relek PF 9 kW med tvåtimmarsspärr; 6,5 A motsvarar beräknad fasström för halva märkeffekten. Det är däremot ännu inte verifierat att de två externa styrstegen motsvarar två lika stora 4,5 kW-steg. Fördröjningarna är också demonstrationsvärden. **Inget av detta är godkända installationsinställningar.** Verkliga steg, strömmar och gränser bestäms efter mätning och kontroll av elektrikern.
@@ -45,7 +49,7 @@ python -m unittest discover -s tests -v
 python -m tools.simulate_load_guard
 ```
 
-Testerna täcker bland annat högsta fas, stegordning, fördröjning, beräknat utrymme före återinkoppling, simulerad och gammal data samt utgången tidsbegränsad blockering.
+Testerna täcker bland annat högsta fas, stegordning, fördröjning, beräknat utrymme före återinkoppling, simulerad och gammal data samt utgången tidsbegränsad blockering. Kvartspristesterna täcker också normala dygn, båda sommartidsomställningarna, felaktiga prisdata, rangordning, BYPASS och samspelet med faslastpolicyn.
 
 ## Aktiv mikrovågsvakt
 

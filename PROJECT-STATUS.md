@@ -1,6 +1,6 @@
 # Projektstatus – Smart lastvakt
 
-Senast uppdaterad: **2026-10-20**
+Senast uppdaterad: **2026-10-23**
 
 Detta är projektets gemensamma överlämningsdokument. En ny tråd ska kunna börja här utan att läsa hela chatthistoriken. Tekniska detaljer finns i dokumenten som länkas nedan.
 
@@ -72,7 +72,11 @@ Ett efterföljande treminutersprov med en liter vatten gav högst **1723,4 W**, 
 
 En frikopplad referensmodell för framtida tvåstegsstyrning finns i `tools/load_guard_policy.py`. Den har inga nätverks- eller reläutgångar och ingår inte i ESP32-firmware. Modellen gör det möjligt att testa fasgränser, stegordning, fördröjningar, återinkopplingsutrymme, datans färskhet och tidsbegränsade externa blockeringar innan den verkliga installationen är känd.
 
-Automatiserade datorbaserade tester finns i `tests/test_load_guard_policy.py`. Mikrons aktiva envägsvakt har dessutom en ren beslutsmodell i `tools/microwave_guard_policy.py` med tester i `tests/test_microwave_guard_policy.py`. Matlagningstimrarnas rena tillståndsmodell finns i `tools/cooking_timer_policy.py` och provas av `tests/test_cooking_timer_policy.py`. Den samlade sviten innehåller 26 tester. Se [LOAD-GUARD-POLICY.md](LOAD-GUARD-POLICY.md) för lastvaktens beteende, avgränsning och körning.
+`tools/quarter_price_policy.py` validerar och rangordnar Tibbers kvartpriser. Standardförslaget blockerar båda stegen under dygnets fem dyraste kvartar och minst ett steg under plats 6–15. Modellen räknar verkliga lokala dygn med 92, 96 eller 100 kvartar, är transparent vid felaktig plan, BYPASS eller opålitlig tid och utfärdar aldrig ett startkommando. En första separat firmwarekälla i `main/tibber_price_source.c` kan, när en byggflagga uttryckligen aktiveras, hämta dagens kompletta Tibber-priser och publicera ett helt icke-aktuerande shadow-beslut i RAM. Den är avstängd som standard och saknar koppling till UI, Shelly, COALA och reläer. Se [PRICE-CONTROL-POLICY.md](PRICE-CONTROL-POLICY.md).
+
+`tools/stage_output_sequencer.py` modellerar den framtida utgångsdrivaren utan rå reläpolaritet eller fysisk adapter. Den går alltid via rätt Re1/Re2-ordning, skickar högst ett idempotent kommando åt gången, väntar på återläsning och minsta intervall och tillåter ingen automatisk återinkoppling från okänt läge eller felläge.
+
+Automatiserade datorbaserade tester finns i `tests/test_load_guard_policy.py`, `tests/test_quarter_price_policy.py` och `tests/test_stage_output_sequencer.py`. Mikrons aktiva envägsvakt har dessutom en ren beslutsmodell i `tools/microwave_guard_policy.py` med tester i `tests/test_microwave_guard_policy.py`. Matlagningstimrarnas rena tillståndsmodell finns i `tools/cooking_timer_policy.py` och provas av `tests/test_cooking_timer_policy.py`. Den samlade sviten innehåller nu 61 tester. Se [LOAD-GUARD-POLICY.md](LOAD-GUARD-POLICY.md) och [PRICE-CONTROL-POLICY.md](PRICE-CONTROL-POLICY.md) för beteende, avgränsning och körning. Den senast flashade firmwareutgåvan verifierades med den tidigare 26-testsviten. De nya pris- och sekvenseringsreferenserna är datorverifierade; firmwarekällans berörda C-enheter kompilerar med shadow-flaggan på, men full länkning stoppades av Windows App Control och ingen ny firmware har flashats.
 
 ## Sekretess och konfiguration
 
@@ -157,7 +161,7 @@ Nedräkningen beräknas mot ESP32:ans monotona tid och påverkas därför inte a
 - En senare notistjänst kan skicka pushmeddelande eller SMS när en maskin bedöms vara klar. Tjänst och leveranssätt är ännu inte valda. Funktionen ska vara övervakande och får inte ge automatisk fjärrstart.
 - Enkel gemensam inköpslista, exempelvis ”mjölken är slut”, med inmatning från mobil eller panel och valbar notis till de vuxna.
 - Kalenderförbättringar efter familjens praktiska användning.
-- Prisvisning och prisstyrning via Tibber, underordnad fas- och säkerhetsgränser.
+- Prisvisning och prisstyrning via Tibber, underordnad fas- och säkerhetsgränser. Den rena kvartspolicyn och en första dagens HTTP-källa i avstängt shadow mode är klara; morgondagsplan, beständig cache, UI, fältprov och fysisk utgång återstår.
 - Möjlig förvarning eller startspärr för mikron innan 20 A-vakten behöver bryta en pågående körning.
 - Smart, stegvis begränsning av elpatronen i samarbete med COALA.
 - Spis/torrkokningsskydd har diskuterats som ett separat framtida säkerhetsproblem men ingår inte i nuvarande konstruktion.
@@ -166,14 +170,15 @@ Nedräkningen beräknas mot ESP32:ans monotona tid och påverkas därför inte a
 
 1. Lägg till en liten lokal händelselogg med tidsstämplar för mikrovakten, L1-värde, Tibbervärdets ålder, Shellyeffekt och reläkommando så att nästa verkliga stopp kan analyseras i efterhand.
 2. Gör en slutlig säkerhetsbedömning av Shelly-pluggens lämplighet för mikron, inklusive korta startströmmar och IKEA-manualens begränsning av extern styrning.
-3. Låt elektrikern fastställa vad de två Benedict-kontaktorerna matar och vilken som styrs av `Re1` respektive `Re2`.
-4. Kontrollera den bekräftade PF-patronens interna kontaktor och om effektvaktsingången `F–K` är byglad, ansluten eller ledig.
-5. Verifiera tvåtimmarsspärrens praktiska beteende utan att förväxla ett halvlastprov direkt efter spänningssättning med patronens fulla effekt.
-6. Mäta strömändringen per fas för varje verkligt effektsteg.
-7. Rita och godkänn slutligt kopplingsschema, inklusive reservläge, SMART/BYPASS och eventuell återkoppling från hjälpkontakterna.
-8. Bestäm slutliga styrgränser, hysteres, minsta till-/fråntider och beteende vid omstart eller saknad data.
-9. Ersätt referensmodellens exempelparametrar med mätta och godkända värden.
-10. Porta den testade policyn till firmware och implementera fysisk relälogik först därefter.
+3. Fullbygg och flasha den standardmässigt avstängda prisfunktionen i rent shadow mode; verifiera samtidigt NTP, dagens kompletta prisdygn, Pulse-stabilitet och internminnets marginal utan någon fysisk utgång.
+4. Låt elektrikern fastställa vad de två Benedict-kontaktorerna matar och vilken som styrs av `Re1` respektive `Re2`.
+5. Kontrollera den bekräftade PF-patronens interna kontaktor och om effektvaktsingången `F–K` är byglad, ansluten eller ledig.
+6. Verifiera tvåtimmarsspärrens praktiska beteende utan att förväxla ett halvlastprov direkt efter spänningssättning med patronens fulla effekt.
+7. Mäta strömändringen per fas för varje verkligt effektsteg.
+8. Rita och godkänn slutligt kopplingsschema, inklusive reservläge, SMART/BYPASS och eventuell återkoppling från hjälpkontakterna.
+9. Bestäm slutliga styrgränser, hysteres, minsta till-/fråntider, maximal sammanhängande prisblockering och beteende vid omstart eller saknad data.
+10. Utöka shadow-källan med morgondagsplan, validerad cache och UI och observera besluten innan de får påverka värmen.
+11. Ersätt referensmodellens exempelparametrar med mätta och godkända värden och implementera den fysiska reläadaptern först därefter.
 
 ## Öppna konstruktionsfrågor
 

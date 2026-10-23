@@ -20,6 +20,9 @@
 #include "shelly_client.h"
 #include "ui.h"
 #include "weather_source.h"
+#if CONFIG_LASTVAKT_TIBBER_PRICE_SHADOW
+#include "tibber_price_source.h"
+#endif
 
 static const char *TAG = "lastvakt";
 
@@ -79,5 +82,11 @@ void app_main(void)
     }
 
     app_time_start_network_sync();
+#if CONFIG_LASTVAKT_TIBBER_PRICE_SHADOW
+    const esp_err_t price_shadow_err = tibber_price_source_start();
+    if (price_shadow_err != ESP_OK) {
+        ESP_LOGW(TAG, "Quarter-price shadow did not start: %s", esp_err_to_name(price_shadow_err));
+    }
+#endif
     ESP_LOGI(TAG, "Clock, weather, calendar, setup page and Tibber phase view started");
 }

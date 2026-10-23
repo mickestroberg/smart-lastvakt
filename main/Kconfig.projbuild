@@ -48,6 +48,28 @@ menu "Example Configuration"
                 Missing, previous-session or older phase values are never used for
                 relay decisions.
 
+        config LASTVAKT_TIBBER_PRICE_SHADOW
+            bool "Enable read-only Tibber quarter-price shadow source"
+            default n
+            help
+                Downloads and ranks today's quarter-hourly Tibber total prices in
+                RAM, but does not connect them to the UI or any physical output.
+                Requires a previously saved explicit Tibber home ID and an
+                NTP-synchronized clock. No schedule is persisted or prefetched
+                for tomorrow.
+
+        config LASTVAKT_TIBBER_PRICE_SHADOW_OFF_QUARTERS
+            int "Shadow: number of highest-price quarters marked fully blocked"
+            depends on LASTVAKT_TIBBER_PRICE_SHADOW
+            default 5
+            range 0 100
+
+        config LASTVAKT_TIBBER_PRICE_SHADOW_HALF_QUARTERS
+            int "Shadow: following quarters marked half limited"
+            depends on LASTVAKT_TIBBER_PRICE_SHADOW
+            default 10
+            range 0 100
+
     endmenu
 
     menu "Display"

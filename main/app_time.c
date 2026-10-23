@@ -28,7 +28,31 @@ typedef enum {
 } time_source_t;
 
 static const char *TAG = "app_time";
-static volatile time_source_t s_time_source = TIME_SOURCE_BUILD;
+static portMUX_TYPE s_time_lock = portMUX_INITIALIZER_UNLOCKED;
+static time_source_t s_time_source = TIME_SOURCE_BUILD;
+static app_time_quality_t s_time_quality = APP_TIME_QUALITY_UNTRUSTED;
+
+static void set_time_source(time_source_t source)
+{
+    portENTER_CRITICAL(&s_time_lock);
+    s_time_source = source;
+    portEXIT_CRITICAL(&s_time_lock);
+}
+
+static void set_time_quality(app_time_quality_t quality)
+{
+    portENTER_CRITICAL(&s_time_lock);
+    s_time_quality = quality;
+    portEXIT_CRITICAL(&s_time_lock);
+}
+
+static time_source_t get_time_source(void)
+{
+    portENTER_CRITICAL(&s_time_lock);
+    const time_source_t source = s_time_source;
+    portEXIT_CRITICAL(&s_time_lock);
+    return source;
+}
 
 static uint8_t bcd_to_dec(uint8_t value)
 {
@@ -162,7 +186,8 @@ void app_time_init(void)
     struct tm local = {0};
     if (rtc_read(&local)) {
         set_system_time_from_local(&local);
-        s_time_source = TIME_SOURCE_RTC;
+        set_time_quality(APP_TIME_QUALITY_RTC);
+        set_time_source(TIME_SOURCE_RTC);
         ESP_LOGI(TAG, "System clock initialized from PCF85063A");
         return;
     }
@@ -170,27 +195,29 @@ void app_time_init(void)
     if (build_time(&local)) {
         set_system_time_from_local(&local);
     }
-    s_time_source = TIME_SOURCE_BUILD;
+    set_time_quality(APP_TIME_QUALITY_UNTRUSTED);
+    set_time_source(TIME_SOURCE_BUILD);
     ESP_LOGW(TAG, "RTC time unavailable; using firmware build time until NTP sync");
 }
 
 static void wifi_time_task(void *arg)
 {
     (void)arg;
-    s_time_source = TIME_SOURCE_CONNECTING;
+    set_time_source(TIME_SOURCE_CONNECTING);
     if (network_setup_wait_connected(portMAX_DELAY)) {
         esp_sntp_config_t sntp_config = ESP_NETIF_SNTP_DEFAULT_CONFIG("se.pool.ntp.org");
         esp_netif_sntp_init(&sntp_config);
         while (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(15000)) != ESP_OK) {
-            s_time_source = TIME_SOURCE_NETWORK_ERROR;
+            set_time_source(TIME_SOURCE_NETWORK_ERROR);
             ESP_LOGW(TAG, "NTP synchronization timed out; retrying in 60 seconds");
             vTaskDelay(pdMS_TO_TICKS(60000));
         }
         rtc_write_local_time();
-        s_time_source = TIME_SOURCE_NTP;
+        set_time_quality(APP_TIME_QUALITY_NETWORK);
+        set_time_source(TIME_SOURCE_NTP);
         ESP_LOGI(TAG, "Swedish local time synchronized with NTP");
     } else {
-        s_time_source = TIME_SOURCE_NETWORK_ERROR;
+        set_time_source(TIME_SOURCE_NETWORK_ERROR);
         ESP_LOGW(TAG, "Wi-Fi connection failed or timed out");
     }
 
@@ -228,7 +255,7 @@ void app_time_format(char *clock_text, size_t clock_size, char *date_text, size_
 
 const char *app_time_status_text(void)
 {
-    switch (s_time_source) {
+    switch (get_time_source()) {
         case TIME_SOURCE_RTC:
             return "RTC • väntar på NTP";
         case TIME_SOURCE_CONNECTING:
@@ -241,4 +268,12 @@ const char *app_time_status_text(void)
         default:
             return "RTC saknas • använder byggtid";
     }
+}
+
+app_time_quality_t app_time_get_quality(void)
+{
+    portENTER_CRITICAL(&s_time_lock);
+    const app_time_quality_t quality = s_time_quality;
+    portEXIT_CRITICAL(&s_time_lock);
+    return quality;
 }
